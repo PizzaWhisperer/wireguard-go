@@ -216,8 +216,10 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 		handshake.chainKey[:],
 		ss[:],
 	)
+
 	aead, _ := chacha20poly1305.New(key[:])
-	aead.Seal(msg.Static[:0], ZeroNonce[:], device.staticIdentity.publicKey[:], handshake.hash[:])
+	hpki := blake2s.Sum256(device.staticIdentity.publicKey[:])
+	aead.Seal(msg.Static[:0], ZeroNonce[:], hpki[:], handshake.hash[:])
 	handshake.mixHash(msg.Static[:])
 
 	// encrypt timestamp
@@ -274,7 +276,8 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 	}
 	KDF2(&chainKey, &key, chainKey[:], ss[:])
 	aead, _ := chacha20poly1305.New(key[:])
-	_, err = aead.Open(peerPK[:0], ZeroNonce[:], msg.Static[:], hash[:])
+	hpki := blake2s.Sum256(msg.Static[:])
+	_, err = aead.Open(peerPK[:0], ZeroNonce[:], hpki[:], hash[:])
 	if err != nil {
 		return nil
 	}
