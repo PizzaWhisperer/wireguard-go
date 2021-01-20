@@ -223,10 +223,7 @@ func TestConcurrencySafety(t *testing.T) {
 	applyCfg := func(cfg io.ReadSeeker) {
 		cfg.Seek(0, io.SeekStart)
 		err := pair[0].dev.IpcSetOperation(cfg)
-		println("cfg again?")
 		if err != nil {
-			println("cfg again!")
-			fmt.Printf("err %+v\n", err)
 			t.Fatal(err.Error())
 		}
 	}
@@ -238,7 +235,6 @@ func TestConcurrencySafety(t *testing.T) {
 			"persistent_keepalive_interval", "1",
 		)
 		for i := 0; i < 1000; i++ {
-			println("here cfg")
 			applyCfg(cfg)
 		}
 	})
@@ -255,9 +251,7 @@ func TestConcurrencySafety(t *testing.T) {
 		// "Received packet with invalid mac1".
 		const iters = 1
 		for i := 0; i < iters; i++ {
-			println("here bad")
 			applyCfg(bad)
-			println("here good")
 			applyCfg(good)
 		}
 	})
