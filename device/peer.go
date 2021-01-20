@@ -101,7 +101,7 @@ func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
 	peer.Lock()
 	defer peer.Unlock()
 
-	peer.cookieGenerator.Init(pk)
+	peer.cookieGenerator.Init(pk) //nothig to do here
 	peer.device = device
 
 	// map public key

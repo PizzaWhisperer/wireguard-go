@@ -24,7 +24,7 @@ import (
 
 type QueueHandshakeElement struct {
 	msgType  uint32
-	packet   []byte
+	packet   []byte //contains M1 and M2 ? modify creation and check
 	endpoint conn.Endpoint
 	buffer   *[MaxMessageSize]byte
 }
@@ -116,7 +116,7 @@ func (device *Device) RoutineReceiveIncoming(IP int, bind conn.Bind) {
 
 	// receive datagrams until conn is closed
 
-	buffer := device.GetMessageBuffer()
+	buffer := device.GetMessageBuffer() //msg is here
 
 	var (
 		err         error
@@ -219,7 +219,7 @@ func (device *Device) RoutineReceiveIncoming(IP int, bind conn.Bind) {
 		// otherwise it is a fixed size & handshake related packet
 
 		case MessageInitiationType:
-			okay = len(packet) == MessageInitiationSize
+			okay = len(packet) == MessageInitiationSize //to modif here
 
 		case MessageResponseType:
 			okay = len(packet) == MessageResponseSize
@@ -237,7 +237,7 @@ func (device *Device) RoutineReceiveIncoming(IP int, bind conn.Bind) {
 				QueueHandshakeElement{
 					msgType:  msgType,
 					buffer:   buffer,
-					packet:   packet,
+					packet:   packet, //here
 					endpoint: endpoint,
 				},
 			)) {
@@ -379,6 +379,7 @@ func (device *Device) RoutineHandshake() {
 
 			if peer := entry.peer; peer.isRunning.Get() {
 				logDebug.Println("Receiving cookie response from ", elem.endpoint.DstToString())
+				//here
 				if !peer.cookieGenerator.ConsumeReply(&reply) {
 					logDebug.Println("Could not decrypt invalid cookie response")
 				}
@@ -389,7 +390,7 @@ func (device *Device) RoutineHandshake() {
 		case MessageInitiationType, MessageResponseType:
 
 			// check mac fields and maybe ratelimit
-
+			//here
 			if !device.cookieChecker.CheckMAC1(elem.packet) {
 				logDebug.Println("Received packet with invalid mac1")
 				continue
@@ -402,7 +403,7 @@ func (device *Device) RoutineHandshake() {
 				// verify MAC2 field
 
 				if !device.cookieChecker.CheckMAC2(elem.packet, elem.endpoint.DstToBytes()) {
-					device.SendHandshakeCookie(&elem)
+					device.SendHandshakeCookie(&elem) //defini in send
 					continue
 				}
 

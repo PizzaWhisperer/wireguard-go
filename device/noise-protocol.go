@@ -8,6 +8,7 @@ package device
 import (
 	"errors"
 	"fmt"
+	//"gitlab/go-pqs/crystals-kyber/utils"
 	"sync"
 	"time"
 
@@ -60,9 +61,12 @@ const (
 	MessageTransportType   = 4
 )
 
+const SIZEC = 1088
+
+//need to add SIZEC
 const (
-	MessageInitiationSize      = 148                                           // size of handshake initiation message
-	MessageResponseSize        = 92                                            // size of response message
+	MessageInitiationSize      = 148 + SIZEC                                   // size of handshake initiation message ere add SIZEC
+	MessageResponseSize        = 92 + 2*SIZEC                                  // size of response message
 	MessageCookieReplySize     = 64                                            // size of cookie reply message
 	MessageTransportHeaderSize = 16                                            // size of data preceding content in transport message
 	MessageTransportSize       = MessageTransportHeaderSize + poly1305.TagSize // size of empty transport
@@ -88,8 +92,9 @@ type MessageInitiation struct {
 	Ephemeral NoisePublicKey
 	Static    [NoisePublicKeySize + poly1305.TagSize]byte
 	Timestamp [tai64n.TimestampSize + poly1305.TagSize]byte
-	MAC1      [blake2s.Size128]byte
-	MAC2      [blake2s.Size128]byte
+	Ct1       [SIZEC]byte
+	MAC1      [blake2s.Size128]byte //shouln t change ?
+	MAC2      [blake2s.Size128]byte //same
 }
 
 type MessageResponse struct {
@@ -97,9 +102,11 @@ type MessageResponse struct {
 	Sender    uint32
 	Receiver  uint32
 	Ephemeral NoisePublicKey
+	Ct2       [SIZEC]byte
+	Ct3       [SIZEC]byte
 	Empty     [poly1305.TagSize]byte
-	MAC1      [blake2s.Size128]byte
-	MAC2      [blake2s.Size128]byte
+	MAC1      [blake2s.Size128]byte //same
+	MAC2      [blake2s.Size128]byte //same
 }
 
 type MessageTransport struct {
@@ -113,7 +120,7 @@ type MessageCookieReply struct {
 	Type     uint32
 	Receiver uint32
 	Nonce    [chacha20poly1305.NonceSizeX]byte
-	Cookie   [blake2s.Size128 + poly1305.TagSize]byte
+	Cookie   [blake2s.Size128 + poly1305.TagSize]byte //here
 }
 
 type Handshake struct {
@@ -195,10 +202,11 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 	}
 
 	handshake.mixHash(handshake.remoteStatic[:])
-
+	var ct1 [SIZEC]byte
 	msg := MessageInitiation{
 		Type:      MessageInitiationType,
 		Ephemeral: handshake.localEphemeral.publicKey(),
+		Ct1:       ct1,
 	}
 
 	handshake.mixKey(msg.Ephemeral[:])
@@ -371,12 +379,15 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	if err != nil {
 		return nil, err
 	}
+	var ct2 [SIZEC]byte
+	var ct3 [SIZEC]byte
 
 	var msg MessageResponse
 	msg.Type = MessageResponseType
 	msg.Sender = handshake.localIndex
 	msg.Receiver = handshake.remoteIndex
-
+	msg.Ct2 = ct2
+	msg.Ct3 = ct3
 	// create ephemeral key
 
 	handshake.localEphemeral, err = newPrivateKey()

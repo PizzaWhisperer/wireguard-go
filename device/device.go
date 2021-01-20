@@ -257,7 +257,7 @@ func (device *Device) SetPrivateKey(sk NoisePrivateKey) error {
 
 	device.staticIdentity.privateKey = sk
 	device.staticIdentity.publicKey = publicKey
-	device.cookieChecker.Init(publicKey)
+	device.cookieChecker.Init(publicKey) //here
 
 	// do static-static DH pre-computations
 

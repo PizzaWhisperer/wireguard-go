@@ -198,7 +198,7 @@ func (peer *Peer) SendHandshakeResponse() error {
 	writer := bytes.NewBuffer(buff[:0])
 	binary.Write(writer, binary.LittleEndian, response)
 	packet := writer.Bytes()
-	peer.cookieGenerator.AddMacs(packet)
+	peer.cookieGenerator.AddMacs(packet) //response + mac
 
 	err = peer.BeginSymmetricSession()
 	if err != nil {
@@ -217,12 +217,13 @@ func (peer *Peer) SendHandshakeResponse() error {
 	return err
 }
 
+//here
 func (device *Device) SendHandshakeCookie(initiatingElem *QueueHandshakeElement) error {
 
 	device.log.Debug.Println("Sending cookie response for denied handshake message for", initiatingElem.endpoint.DstToString())
 
 	sender := binary.LittleEndian.Uint32(initiatingElem.packet[4:8])
-	reply, err := device.cookieChecker.CreateReply(initiatingElem.packet, sender, initiatingElem.endpoint.DstToBytes())
+	reply, err := device.cookieChecker.CreateReply(initiatingElem.packet, sender, initiatingElem.endpoint.DstToBytes()) //here
 	if err != nil {
 		device.log.Error.Println("Failed to create cookie reply:", err)
 		return err
