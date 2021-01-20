@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/crypto/blake2s"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/ipc"
 )
@@ -237,7 +238,8 @@ func (device *Device) IpcSetOperation(r io.Reader) error {
 				if dummy {
 					peer = &Peer{}
 				} else {
-					peer = device.LookupPeer(publicKey)
+					hpk := blake2s.Sum256(publicKey[:])
+					peer = device.LookupPeer(hpk)
 				}
 
 				createdNewPeer = peer == nil

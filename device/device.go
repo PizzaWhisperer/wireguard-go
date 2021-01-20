@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/crypto/blake2s"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 	"golang.zx2c4.com/wireguard/conn"
@@ -49,9 +50,9 @@ type Device struct {
 	}
 
 	peers struct {
-		empty        AtomicBool // empty reports whether len(keyMap) == 0
-		sync.RWMutex            // protects keyMap
-		keyMap       map[NoisePublicKey]*Peer
+		empty        AtomicBool                   // empty reports whether len(keyMap) == 0
+		sync.RWMutex                              // protects keyMap
+		keyMap       map[[blake2s.Size]byte]*Peer //should be h(pk) to peer?
 	}
 
 	// unprotected / "self-synchronising resources"
@@ -120,7 +121,7 @@ func newEncryptionQueue() *encryptionQueue {
  *
  * Must hold device.peers.Mutex
  */
-func unsafeRemovePeer(device *Device, peer *Peer, key NoisePublicKey) {
+func unsafeRemovePeer(device *Device, peer *Peer, hk [blake2s.Size]byte) {
 
 	// stop routing and processing of packets
 
@@ -128,8 +129,7 @@ func unsafeRemovePeer(device *Device, peer *Peer, key NoisePublicKey) {
 	peer.Stop()
 
 	// remove from peer map
-
-	delete(device.peers.keyMap, key)
+	delete(device.peers.keyMap, hk)
 	device.peers.empty.Set(len(device.peers.keyMap) == 0)
 }
 
@@ -247,9 +247,9 @@ func (device *Device) SetPrivateKey(sk NoisePrivateKey) error {
 	// remove peers with matching public keys
 
 	publicKey := sk.publicKey()
-	for key, peer := range device.peers.keyMap {
+	for hk, peer := range device.peers.keyMap {
 		if peer.handshake.remoteStatic.Equals(publicKey) {
-			unsafeRemovePeer(device, peer, key)
+			unsafeRemovePeer(device, peer, hk)
 		}
 	}
 
@@ -294,7 +294,7 @@ func NewDevice(tunDevice tun.Device, logger *Logger) *Device {
 	}
 	device.tun.mtu = int32(mtu)
 
-	device.peers.keyMap = make(map[NoisePublicKey]*Peer)
+	device.peers.keyMap = make(map[[blake2s.Size]byte]*Peer)
 
 	device.rate.limiter.Init()
 	device.rate.underLoadUntil.Store(time.Time{})
@@ -337,21 +337,19 @@ func NewDevice(tunDevice tun.Device, logger *Logger) *Device {
 	return device
 }
 
-func (device *Device) LookupPeer(pk NoisePublicKey) *Peer {
+func (device *Device) LookupPeer(hpk [blake2s.Size]byte) *Peer {
 	device.peers.RLock()
 	defer device.peers.RUnlock()
-
-	return device.peers.keyMap[pk]
+	return device.peers.keyMap[hpk]
 }
 
-func (device *Device) RemovePeer(key NoisePublicKey) {
+func (device *Device) RemovePeer(hk [blake2s.Size]byte) {
 	device.peers.Lock()
 	defer device.peers.Unlock()
 	// stop peer and remove from routing
-
-	peer, ok := device.peers.keyMap[key]
+	peer, ok := device.peers.keyMap[hk]
 	if ok {
-		unsafeRemovePeer(device, peer, key)
+		unsafeRemovePeer(device, peer, hk)
 	}
 }
 
@@ -359,11 +357,11 @@ func (device *Device) RemoveAllPeers() {
 	device.peers.Lock()
 	defer device.peers.Unlock()
 
-	for key, peer := range device.peers.keyMap {
-		unsafeRemovePeer(device, peer, key)
+	for hk, peer := range device.peers.keyMap {
+		unsafeRemovePeer(device, peer, hk)
 	}
 
-	device.peers.keyMap = make(map[NoisePublicKey]*Peer)
+	device.peers.keyMap = make(map[[blake2s.Size]byte]*Peer)
 }
 
 func (device *Device) FlushPacketQueues() {

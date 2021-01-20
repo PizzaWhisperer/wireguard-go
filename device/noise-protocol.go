@@ -268,7 +268,7 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 
 	// decrypt static key
 	var err error
-	var peerPK NoisePublicKey
+	var hpeerPK [blake2s.Size]byte
 	var key [chacha20poly1305.KeySize]byte
 	ss := device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
 	if isZero(ss[:]) {
@@ -276,8 +276,7 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 	}
 	KDF2(&chainKey, &key, chainKey[:], ss[:])
 	aead, _ := chacha20poly1305.New(key[:])
-	hpki := blake2s.Sum256(msg.Static[:])
-	_, err = aead.Open(peerPK[:0], ZeroNonce[:], hpki[:], hash[:])
+	_, err = aead.Open(hpeerPK[:0], ZeroNonce[:], msg.Static[:], hash[:])
 	if err != nil {
 		return nil
 	}
@@ -285,7 +284,7 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 
 	// lookup peer
 
-	peer := device.LookupPeer(peerPK)
+	peer := device.LookupPeer(hpeerPK)
 	if peer == nil {
 		return nil
 	}

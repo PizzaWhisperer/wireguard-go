@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"golang.org/x/crypto/blake2s"
 	"golang.zx2c4.com/wireguard/conn"
 )
 
@@ -104,8 +105,8 @@ func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
 	peer.device = device
 
 	// map public key
-
-	_, ok := device.peers.keyMap[pk]
+	hpk := blake2s.Sum256(pk[:])
+	_, ok := device.peers.keyMap[hpk]
 	if ok {
 		return nil, errors.New("adding existing peer")
 	}
@@ -123,8 +124,7 @@ func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
 	peer.endpoint = nil
 
 	// add
-
-	device.peers.keyMap[pk] = peer
+	device.peers.keyMap[hpk] = peer
 	device.peers.empty.Set(false)
 
 	// start peer
