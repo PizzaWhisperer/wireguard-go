@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"bytes"
 
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/net/ipv4"
@@ -19,6 +20,7 @@ import (
 	"golang.zx2c4.com/wireguard/rwcancel"
 	"golang.zx2c4.com/wireguard/tun"
 )
+
 
 type Device struct {
 	isUp     AtomicBool // device is (going) up
@@ -45,14 +47,14 @@ type Device struct {
 
 	staticIdentity struct {
 		sync.RWMutex
-		privateKey NoisePrivateKey
-		publicKey  NoisePublicKey
+		privateKey KyberKEMSK
+		publicKey  KyberKEMPK
 	}
 
 	peers struct {
 		empty        AtomicBool                   // empty reports whether len(keyMap) == 0
 		sync.RWMutex                              // protects keyMap
-		keyMap       map[[blake2s.Size]byte]*Peer //should be h(pk) to peer?
+		keyMap       map[[blake2s.Size]byte]*Peer //map h(pk) to peer
 	}
 
 	// unprotected / "self-synchronising resources"
@@ -225,13 +227,15 @@ func (device *Device) IsUnderLoad() bool {
 	return until.After(now)
 }
 
-func (device *Device) SetPrivateKey(sk NoisePrivateKey) error {
+//Set the KEM keys
+func (device *Device) SetKeys(sk KyberKEMSK, pk KyberKEMPK) error {
 	// lock required resources
 
 	device.staticIdentity.Lock()
 	defer device.staticIdentity.Unlock()
 
-	if sk.Equals(device.staticIdentity.privateKey) {
+	if bytes.Compare(sk[:], device.staticIdentity.privateKey[:]) ==0 {
+		//already up to date
 		return nil
 	}
 
@@ -246,9 +250,8 @@ func (device *Device) SetPrivateKey(sk NoisePrivateKey) error {
 
 	// remove peers with matching public keys
 
-	publicKey := sk.publicKey()
 	for hk, peer := range device.peers.keyMap {
-		if peer.handshake.remoteStatic.Equals(publicKey) {
+		if bytes.Compare(peer.handshake.remoteStatic[:],pk[:]) ==0{
 			unsafeRemovePeer(device, peer, hk)
 		}
 	}
@@ -256,15 +259,15 @@ func (device *Device) SetPrivateKey(sk NoisePrivateKey) error {
 	// update key material
 
 	device.staticIdentity.privateKey = sk
-	device.staticIdentity.publicKey = publicKey
-	device.cookieChecker.Init(publicKey) //here
+	device.staticIdentity.publicKey = pk
+	device.cookieChecker.Init(pk)
 
 	// do static-static DH pre-computations
 
 	expiredPeers := make([]*Peer, 0, len(device.peers.keyMap))
 	for _, peer := range device.peers.keyMap {
 		handshake := &peer.handshake
-		handshake.precomputedStaticStatic = device.staticIdentity.privateKey.sharedSecret(handshake.remoteStatic)
+		handshake.precomputedStaticStatic = device.staticIdentity.privateKey.sharedSecret(handshake.remoteStatic)//here
 		expiredPeers = append(expiredPeers, peer)
 	}
 
