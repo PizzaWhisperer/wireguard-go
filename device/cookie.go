@@ -22,7 +22,7 @@ type CookieChecker struct {
 	}
 	mac2 struct {
 		secret        [blake2s.Size]byte //h(pk)
-		secretSet     time.Time          //time creation
+		secretSet     time.Time
 		encryptionKey [chacha20poly1305.KeySize]byte
 	}
 }
@@ -34,14 +34,15 @@ type CookieGenerator struct {
 	}
 	mac2 struct {
 		cookie        [blake2s.Size128]byte
-		cookieSet     time.Time //time creation
+		cookieSet     time.Time
 		hasLastMAC1   bool
 		lastMAC1      [blake2s.Size128]byte
 		encryptionKey [chacha20poly1305.KeySize]byte
 	}
 }
 
-func (st *CookieChecker) Init(pk NoisePublicKey) {
+//static pk as input
+func (st *CookieChecker) Init(pk KyberKEMPK) {
 	st.Lock()
 	defer st.Unlock()
 
@@ -74,12 +75,11 @@ func (st *CookieChecker) CheckMAC1(msg []byte) bool {
 	smac2 := size - blake2s.Size128
 	smac1 := smac2 - blake2s.Size128
 
-	var mac1 [blake2s.Size128]byte //h(pk msg[:smac])
+	var mac1 [blake2s.Size128]byte
 
 	mac, _ := blake2s.New128(st.mac1.key[:])
 	mac.Write(msg[:smac1])
 	mac.Sum(mac1[:0])
-	//check mac1 == msg[smac1:smac2]
 	return hmac.Equal(mac1[:], msg[smac1:smac2])
 }
 
@@ -110,7 +110,6 @@ func (st *CookieChecker) CheckMAC2(msg []byte, src []byte) bool {
 		mac.Write(msg[:smac2])
 		mac.Sum(mac2[:0])
 	}()
-	//here
 	return hmac.Equal(mac2[:], msg[smac2:])
 }
 
@@ -171,8 +170,8 @@ func (st *CookieChecker) CreateReply(
 	return reply, nil
 }
 
-//here
-func (st *CookieGenerator) Init(pk NoisePublicKey) {
+//static pk as input
+func (st *CookieGenerator) Init(pk KyberKEMPK) {
 	st.Lock()
 	defer st.Unlock()
 
@@ -215,7 +214,6 @@ func (st *CookieGenerator) ConsumeReply(msg *MessageCookieReply) bool {
 	return true
 }
 
-//add zero as place holder for ct
 func (st *CookieGenerator) AddMacs(msg []byte) {
 
 	size := len(msg)
