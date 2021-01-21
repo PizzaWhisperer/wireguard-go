@@ -7,12 +7,10 @@ package device
 
 import (
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/subtle"
 	"hash"
 
 	"golang.org/x/crypto/blake2s"
-	"golang.org/x/crypto/curve25519"
 )
 
 /* KDF related functions.
@@ -76,6 +74,7 @@ func setZero(arr []byte) {
 	}
 }
 
+/**
 func (sk *NoisePrivateKey) clamp() {
 	sk[0] &= 248
 	sk[31] = (sk[31] & 127) | 64
@@ -93,10 +92,21 @@ func (sk *NoisePrivateKey) publicKey() (pk NoisePublicKey) {
 	curve25519.ScalarBaseMult(apk, ask)
 	return
 }
+**/
 
-func (sk *NoisePrivateKey) sharedSecret(pk NoisePublicKey) (ss [NoisePublicKeySize]byte) {
-	apk := (*[NoisePublicKeySize]byte)(&pk)
-	ask := (*[NoisePrivateKeySize]byte)(sk)
-	curve25519.ScalarMult(&ss, ask, apk)
+func (sk *KyberPKESK) sharedSecret(pk KyberKEMPK) (ss [NoisePublicKeySize]byte) {
+	//here
+	//apk := (*[NoisePublicKeySize]byte)(&pk)
+	//ask := (*[NoisePrivateKeySize]byte)(sk)
+	//curve25519.ScalarMult(&ss, ask, apk)
+	return ss
+}
+
+func (sk *KyberKEMSK) sharedSecret(pk KyberKEMPK) (ss [NoisePublicKeySize]byte) {
+	//encaps and keep K
+	//here
+	//apk := (*[NoisePublicKeySize]byte)(&pk)
+	//ask := (*[NoisePrivateKeySize]byte)(sk)
+	//curve25519.ScalarMult(&ss, ask, apk)
 	return ss
 }

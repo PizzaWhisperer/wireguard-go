@@ -8,7 +8,6 @@ package device
 import (
 	"errors"
 	"fmt"
-	//"gitlab/go-pqs/crystals-kyber/utils"
 	"sync"
 	"time"
 
@@ -16,6 +15,8 @@ import (
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/poly1305"
 
+	"gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber"
+	"gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber/utils"
 	"golang.zx2c4.com/wireguard/tai64n"
 )
 
@@ -61,12 +62,9 @@ const (
 	MessageTransportType   = 4
 )
 
-const SIZEC = 1088
-
-//need to add SIZEC
 const (
-	MessageInitiationSize      = 148 + SIZEC                                   // size of handshake initiation message ere add SIZEC
-	MessageResponseSize        = 92 + 2*SIZEC                                  // size of response message
+	MessageInitiationSize      = 148 + utils.SIZEC                                   // size of handshake initiation message ere add SIZEC
+	MessageResponseSize        = 92 + 2*utils.SIZEC                                  // size of response message
 	MessageCookieReplySize     = 64                                            // size of cookie reply message
 	MessageTransportHeaderSize = 16                                            // size of data preceding content in transport message
 	MessageTransportSize       = MessageTransportHeaderSize + poly1305.TagSize // size of empty transport
@@ -89,24 +87,24 @@ const (
 type MessageInitiation struct {
 	Type      uint32
 	Sender    uint32
-	Ephemeral NoisePublicKey
-	Static    [NoisePublicKeySize + poly1305.TagSize]byte
+	Ephemeral KyberPKEPK
+	Static    [NoisePublicKeySize + poly1305.TagSize]byte //sidi ?
 	Timestamp [tai64n.TimestampSize + poly1305.TagSize]byte
-	Ct1       [SIZEC]byte
-	MAC1      [blake2s.Size128]byte //shouln t change ?
-	MAC2      [blake2s.Size128]byte //same
+	Ct1       [utils.SIZEC]byte
+	MAC1      [blake2s.Size128]byte
+	MAC2      [blake2s.Size128]byte
 }
 
 type MessageResponse struct {
 	Type      uint32
 	Sender    uint32
 	Receiver  uint32
-	Ephemeral NoisePublicKey
-	Ct2       [SIZEC]byte
-	Ct3       [SIZEC]byte
+	Ephemeral KyberPKEPK //epkr
+	Ct2       [utils.SIZEC]byte
+	Ct3       [utils.SIZEC]byte
 	Empty     [poly1305.TagSize]byte
-	MAC1      [blake2s.Size128]byte //same
-	MAC2      [blake2s.Size128]byte //same
+	MAC1      [blake2s.Size128]byte
+	MAC2      [blake2s.Size128]byte
 }
 
 type MessageTransport struct {
@@ -129,11 +127,11 @@ type Handshake struct {
 	hash                      [blake2s.Size]byte       // hash value
 	chainKey                  [blake2s.Size]byte       // chain key
 	presharedKey              NoiseSymmetricKey        // psk
-	localEphemeral            NoisePrivateKey          // ephemeral secret key
+	localEphemeral            KyberPKESK               // ephemeral secret key kyber PKE ske
 	localIndex                uint32                   // used to clear hash-table
 	remoteIndex               uint32                   // index for sending
-	remoteStatic              NoisePublicKey           // long term key
-	remoteEphemeral           NoisePublicKey           // ephemeral public key
+	remoteStatic              KyberKEMPK               // long term key
+	remoteEphemeral           KyberPKEPK               // ephemeral public key
 	precomputedStaticStatic   [NoisePublicKeySize]byte // precomputed shared secret
 	lastTimestamp             tai64n.Timestamp
 	lastInitiationConsumption time.Time
@@ -196,16 +194,21 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 	var err error
 	handshake.hash = InitialHash
 	handshake.chainKey = InitialChainKey
-	handshake.localEphemeral, err = newPrivateKey()
+	pk, sk := kyber.PKEKeyGen(nil)
+	var hpk KyberPKEPK
+	copy(hpk[:], pk.Bytes())
+	var hsk KyberPKESK
+	copy(hsk[:], sk.Bytes())
+	handshake.localEphemeral = hsk
 	if err != nil {
 		return nil, err
 	}
 
 	handshake.mixHash(handshake.remoteStatic[:])
-	var ct1 [SIZEC]byte
+	var ct1 [utils.SIZEC]byte
 	msg := MessageInitiation{
 		Type:      MessageInitiationType,
-		Ephemeral: handshake.localEphemeral.publicKey(),
+		Ephemeral: hpk,
 		Ct1:       ct1,
 	}
 
@@ -213,7 +216,7 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 	handshake.mixHash(msg.Ephemeral[:])
 
 	// encrypt static key
-	ss := handshake.localEphemeral.sharedSecret(handshake.remoteStatic)
+	ss := handshake.localEphemeral.sharedSecret(handshake.remoteStatic) //here
 	if isZero(ss[:]) {
 		return nil, errZeroECDHResult
 	}
@@ -278,7 +281,8 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 	var err error
 	var hpeerPK [blake2s.Size]byte
 	var key [chacha20poly1305.KeySize]byte
-	ss := device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
+	//ss := device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral) //here static key used?
+	var ss NoiseSymmetricKey
 	if isZero(ss[:]) {
 		return nil
 	}
@@ -379,8 +383,9 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	if err != nil {
 		return nil, err
 	}
-	var ct2 [SIZEC]byte
-	var ct3 [SIZEC]byte
+	var ct2 [utils.SIZEC]byte
+	ct2[0] = 1
+	var ct3 [utils.SIZEC]byte
 
 	var msg MessageResponse
 	msg.Type = MessageResponseType
@@ -390,18 +395,24 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	msg.Ct3 = ct3
 	// create ephemeral key
 
-	handshake.localEphemeral, err = newPrivateKey()
+	pk, sk := kyber.PKEKeyGen(nil)
+	var hpk KyberPKEPK
+	copy(hpk[:], pk.Bytes())
+	var hsk KyberPKESK
+	copy(hsk[:], sk.Bytes())
+	handshake.localEphemeral = hsk
 	if err != nil {
 		return nil, err
 	}
-	msg.Ephemeral = handshake.localEphemeral.publicKey()
+	msg.Ephemeral = hpk
 	handshake.mixHash(msg.Ephemeral[:])
 	handshake.mixKey(msg.Ephemeral[:])
 
 	func() {
-		ss := handshake.localEphemeral.sharedSecret(handshake.remoteEphemeral)
+		var ss NoiseSymmetricKey
+		//ss := handshake.localEphemeral.sharedSecret(handshake.remoteEphemeral)//here
 		handshake.mixKey(ss[:])
-		ss = handshake.localEphemeral.sharedSecret(handshake.remoteStatic)
+		//ss = handshake.localEphemeral.sharedSecret(handshake.remoteStatic)//here
 		handshake.mixKey(ss[:])
 	}()
 
@@ -471,13 +482,15 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 		mixKey(&chainKey, &handshake.chainKey, msg.Ephemeral[:])
 
 		func() {
-			ss := handshake.localEphemeral.sharedSecret(msg.Ephemeral)
+			//ss := handshake.localEphemeral.sharedSecret(msg.Ephemeral)
+			var ss NoiseSymmetricKey
 			mixKey(&chainKey, &chainKey, ss[:])
 			setZero(ss[:])
 		}()
 
 		func() {
-			ss := device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
+			//ss := device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
+			var ss NoiseSymmetricKey
 			mixKey(&chainKey, &chainKey, ss[:])
 			setZero(ss[:])
 		}()

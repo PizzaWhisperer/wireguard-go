@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"golang.zx2c4.com/wireguard/tun/tuntest"
+	"gitlab.kudelski.com/ks-fun/go-pqs/crystal-kyber"
 )
 
 func getFreePort(tb testing.TB) string {
@@ -272,14 +273,18 @@ func assertEqual(t *testing.T, a, b []byte) {
 }
 
 func randDevice(t *testing.T) *Device {
-	sk, err := newPrivateKey()
+	pk, sk := kyber.KeyGen(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+	var bpk KyberKEMPK
+	var bsk KyberKEMSK
+	copy(bpk[:], pk.Bytes())
+	copy(bsk[:], sk.Bytes())
 	tun := newDummyTUN("dummy")
 	logger := NewLogger(LogLevelError, "")
 	device := NewDevice(tun, logger)
-	device.SetPrivateKey(sk)
+	device.SetKeys(bsk, bpk)
 	return device
 }
 

@@ -7,6 +7,7 @@ package device
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -55,7 +56,7 @@ func (device *Device) IpcGetOperation(w io.Writer) error {
 		// serialize device related values
 
 		if !device.staticIdentity.privateKey.IsZero() {
-			send("private_key=" + device.staticIdentity.privateKey.ToHex())
+			send("private_key=" + (device.staticIdentity.privateKey[:]).ToHex())
 		}
 
 		if device.net.port != 0 {
@@ -72,8 +73,8 @@ func (device *Device) IpcGetOperation(w io.Writer) error {
 			peer.RLock()
 			defer peer.RUnlock()
 
-			send("public_key=" + peer.handshake.remoteStatic.ToHex())
-			send("preshared_key=" + peer.handshake.presharedKey.ToHex())
+			send("public_key=" + peer.handshake.remoteStatic[:].ToHex())
+			send("preshared_key=" + peer.handshake.presharedKey[:].ToHex())
 			send("protocol_version=1")
 			if peer.endpoint != nil {
 				send("endpoint=" + peer.endpoint.DstToString())
@@ -222,8 +223,8 @@ func (device *Device) IpcSetOperation(r io.Reader) error {
 			switch key {
 
 			case "public_key":
-				var publicKey NoisePublicKey
-				err := publicKey.FromHex(value)
+				var publicKey KyberKEMPK
+				err := publicKey.FromHex(value) //here
 				if err != nil {
 					logError.Println("Failed to get peer by public key:", err)
 					return &IPCError{ipc.IpcErrorInvalid}
@@ -232,7 +233,7 @@ func (device *Device) IpcSetOperation(r io.Reader) error {
 				// ignore peer with public key of device
 
 				device.staticIdentity.RLock()
-				dummy = device.staticIdentity.publicKey.Equals(publicKey)
+				dummy = bytes.Compare(device.staticIdentity.publicKey[:], publicKey[:]) == 0
 				device.staticIdentity.RUnlock()
 
 				if dummy {
@@ -281,7 +282,8 @@ func (device *Device) IpcSetOperation(r io.Reader) error {
 				}
 				if !dummy {
 					logDebug.Println(peer, "- UAPI: Removing")
-					device.RemovePeer(peer.handshake.remoteStatic)
+					hpk := blake2s.Sum256(peer.handshake.remoteStatic[:])
+					device.RemovePeer(hpk[:])
 				}
 				peer = &Peer{}
 				dummy = true
