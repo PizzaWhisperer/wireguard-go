@@ -76,7 +76,7 @@ type Peer struct {
 	cookieGenerator CookieGenerator
 }
 
-func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
+func (device *Device) NewPeer(pk KyberKEMPK) (*Peer, error) {
 	if device.isClosed.Get() {
 		return nil, errors.New("device closed")
 	}
@@ -101,7 +101,7 @@ func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
 	peer.Lock()
 	defer peer.Unlock()
 
-	peer.cookieGenerator.Init(pk) //nothig to do here
+	peer.cookieGenerator.Init(pk)
 	peer.device = device
 
 	// map public key
@@ -115,7 +115,8 @@ func (device *Device) NewPeer(pk NoisePublicKey) (*Peer, error) {
 
 	handshake := &peer.handshake
 	handshake.mutex.Lock()
-	handshake.precomputedStaticStatic = device.staticIdentity.privateKey.sharedSecret(pk)
+	var ss NoiseSymmetricKey
+	handshake.precomputedStaticStatic = ss //device.staticIdentity.privateKey.sharedSecret(pk) here
 	handshake.remoteStatic = pk
 	handshake.mutex.Unlock()
 
