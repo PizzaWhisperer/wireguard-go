@@ -383,7 +383,7 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	if err != nil {
 		return nil, err
 	}
-	var seed [32]byte
+	var seed [32]byte//KDF1
 	ct2, shk2 := CPAEncaps(handshake.remoteEphemeral)
 	ct3, shk3 := kyber.Encaps(seed[:], handshake.remoteStatic)
 
@@ -428,6 +428,7 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	handshake.mixHash(tau[:])
 
 	func() {
+		//key
 		aead, _ := chacha20poly1305.New(key[:])
 		aead.Seal(msg.Empty[:0], ZeroNonce[:], nil, handshake.hash[:])
 		handshake.mixHash(msg.Empty[:])

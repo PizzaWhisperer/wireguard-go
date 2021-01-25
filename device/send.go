@@ -43,7 +43,6 @@ import (
  */
 
 type QueueOutboundElement struct {
-	dropped int32
 	sync.Mutex
 	buffer  *[MaxMessageSize]byte // slice holding the packet data
 	packet  []byte                // slice of "buffer" (always!)
@@ -54,7 +53,6 @@ type QueueOutboundElement struct {
 
 func (device *Device) NewOutboundElement() *QueueOutboundElement {
 	elem := device.GetOutboundElement()
-	elem.dropped = AtomicFalse
 	elem.buffer = device.GetMessageBuffer()
 	elem.Mutex = sync.Mutex{}
 	elem.nonce = 0
@@ -73,14 +71,6 @@ func (elem *QueueOutboundElement) clearPointers() {
 	elem.peer = nil
 }
 
-func (elem *QueueOutboundElement) Drop() {
-	atomic.StoreInt32(&elem.dropped, AtomicTrue)
-}
-
-func (elem *QueueOutboundElement) IsDropped() bool {
-	return atomic.LoadInt32(&elem.dropped) == AtomicTrue
-}
-
 func addToNonceQueue(queue chan *QueueOutboundElement, elem *QueueOutboundElement, device *Device) {
 	for {
 		select {
@@ -94,23 +84,6 @@ func addToNonceQueue(queue chan *QueueOutboundElement, elem *QueueOutboundElemen
 			default:
 			}
 		}
-	}
-}
-
-func addToOutboundAndEncryptionQueues(outboundQueue chan *QueueOutboundElement, encryptionQueue chan *QueueOutboundElement, elem *QueueOutboundElement) {
-	select {
-	case outboundQueue <- elem:
-		select {
-		case encryptionQueue <- elem:
-			return
-		default:
-			elem.Drop()
-			elem.peer.device.PutMessageBuffer(elem.buffer)
-			elem.Unlock()
-		}
-	default:
-		elem.peer.device.PutMessageBuffer(elem.buffer)
-		elem.peer.device.PutOutboundElement(elem)
 	}
 }
 
@@ -454,11 +427,11 @@ NextPacket:
 			}
 
 			elem.keypair = keypair
-			elem.dropped = AtomicFalse
 			elem.Lock()
 
 			// add to parallel and sequential queue
-			addToOutboundAndEncryptionQueues(peer.queue.outbound, device.queue.encryption.c, elem)
+			peer.queue.outbound <- elem
+			device.queue.encryption.c <- elem
 		}
 	}
 }
@@ -493,15 +466,7 @@ func (device *Device) RoutineEncryption() {
 	logDebug.Println("Routine: encryption worker - started")
 
 	for elem := range device.queue.encryption.c {
-
-		// check if dropped
-
-		if elem.IsDropped() {
-			continue
-		}
-
 		// populate header fields
-
 		header := elem.buffer[:MessageTransportHeaderSize]
 
 		fieldType := header[0:4]
@@ -549,10 +514,6 @@ func (peer *Peer) RoutineSequentialSender() {
 
 	for elem := range peer.queue.outbound {
 		elem.Lock()
-		if elem.IsDropped() {
-			device.PutOutboundElement(elem)
-			continue
-		}
 		if !peer.isRunning.Get() {
 			// peer has been stopped; return re-usable elems to the shared pool.
 			// This is an optimization only. It is possible for the peer to be stopped

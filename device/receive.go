@@ -30,7 +30,6 @@ type QueueHandshakeElement struct {
 }
 
 type QueueInboundElement struct {
-	dropped int32
 	sync.Mutex
 	buffer   *[MaxMessageSize]byte
 	packet   []byte
@@ -48,31 +47,6 @@ func (elem *QueueInboundElement) clearPointers() {
 	elem.packet = nil
 	elem.keypair = nil
 	elem.endpoint = nil
-}
-
-func (elem *QueueInboundElement) Drop() {
-	atomic.StoreInt32(&elem.dropped, AtomicTrue)
-}
-
-func (elem *QueueInboundElement) IsDropped() bool {
-	return atomic.LoadInt32(&elem.dropped) == AtomicTrue
-}
-
-func (device *Device) addToInboundAndDecryptionQueues(inboundQueue chan *QueueInboundElement, decryptionQueue chan *QueueInboundElement, elem *QueueInboundElement) bool {
-	select {
-	case inboundQueue <- elem:
-		select {
-		case decryptionQueue <- elem:
-			return true
-		default:
-			elem.Drop()
-			elem.Unlock()
-			return false
-		}
-	default:
-		device.PutInboundElement(elem)
-		return false
-	}
 }
 
 func (device *Device) addToHandshakeQueue(queue chan QueueHandshakeElement, elem QueueHandshakeElement) bool {
@@ -109,6 +83,7 @@ func (device *Device) RoutineReceiveIncoming(IP int, bind conn.Bind) {
 	logDebug := device.log.Debug
 	defer func() {
 		logDebug.Println("Routine: receive incoming IPv" + strconv.Itoa(IP) + " - stopped")
+		device.queue.decryption.wg.Done()
 		device.net.stopping.Done()
 	}()
 
@@ -137,7 +112,7 @@ func (device *Device) RoutineReceiveIncoming(IP int, bind conn.Bind) {
 
 		if err != nil {
 			device.PutMessageBuffer(buffer)
-			if errors.Is(err, net.ErrClosed) {
+			if errors.Is(err, conn.NetErrClosed) {
 				return
 			}
 			device.log.Error.Printf("Failed to receive packet: %v", err)
@@ -196,7 +171,6 @@ func (device *Device) RoutineReceiveIncoming(IP int, bind conn.Bind) {
 			elem.packet = packet
 			elem.buffer = buffer
 			elem.keypair = keypair
-			elem.dropped = AtomicFalse
 			elem.endpoint = endpoint
 			elem.counter = 0
 			elem.Mutex = sync.Mutex{}
@@ -206,9 +180,9 @@ func (device *Device) RoutineReceiveIncoming(IP int, bind conn.Bind) {
 
 			peer.queue.RLock()
 			if peer.isRunning.Get() {
-				if device.addToInboundAndDecryptionQueues(peer.queue.inbound, device.queue.decryption, elem) {
-					buffer = device.GetMessageBuffer()
-				}
+				peer.queue.inbound <- elem
+				device.queue.decryption.c <- elem
+				buffer = device.GetMessageBuffer()
 			} else {
 				device.PutInboundElement(elem)
 			}
@@ -258,59 +232,26 @@ func (device *Device) RoutineDecryption() {
 	}()
 	logDebug.Println("Routine: decryption worker - started")
 
-	for {
-		select {
-		case <-device.signals.stop:
-			for {
-				select {
-				case elem, ok := <-device.queue.decryption:
-					if ok {
-						if !elem.IsDropped() {
-							elem.Drop()
-							device.PutMessageBuffer(elem.buffer)
-						}
-						elem.Unlock()
-					}
-				default:
-					return
-				}
-			}
+	for elem := range device.queue.decryption.c {
+		// split message into fields
+		counter := elem.packet[MessageTransportOffsetCounter:MessageTransportOffsetContent]
+		content := elem.packet[MessageTransportOffsetContent:]
 
-		case elem, ok := <-device.queue.decryption:
-
-			if !ok {
-				return
-			}
-
-			// check if dropped
-
-			if elem.IsDropped() {
-				continue
-			}
-
-			// split message into fields
-
-			counter := elem.packet[MessageTransportOffsetCounter:MessageTransportOffsetContent]
-			content := elem.packet[MessageTransportOffsetContent:]
-
-			// decrypt and release to consumer
-
-			var err error
-			elem.counter = binary.LittleEndian.Uint64(counter)
-			// copy counter to nonce
-			binary.LittleEndian.PutUint64(nonce[0x4:0xc], elem.counter)
-			elem.packet, err = elem.keypair.receive.Open(
-				content[:0],
-				nonce[:],
-				content,
-				nil,
-			)
-			if err != nil {
-				elem.Drop()
-				device.PutMessageBuffer(elem.buffer)
-			}
-			elem.Unlock()
+		// decrypt and release to consumer
+		var err error
+		elem.counter = binary.LittleEndian.Uint64(counter)
+		// copy counter to nonce
+		binary.LittleEndian.PutUint64(nonce[0x4:0xc], elem.counter)
+		elem.packet, err = elem.keypair.receive.Open(
+			content[:0],
+			nonce[:],
+			content,
+			nil,
+		)
+		if err != nil {
+			elem.packet = nil
 		}
+		elem.Unlock()
 	}
 }
 
@@ -525,9 +466,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 		logDebug.Println(peer, "- Routine: sequential receiver - stopped")
 		peer.routines.stopping.Done()
 		if elem != nil {
-			if !elem.IsDropped() {
-				device.PutMessageBuffer(elem.buffer)
-			}
+			device.PutMessageBuffer(elem.buffer)
 			device.PutInboundElement(elem)
 		}
 	}()
@@ -536,9 +475,7 @@ func (peer *Peer) RoutineSequentialReceiver() {
 
 	for {
 		if elem != nil {
-			if !elem.IsDropped() {
-				device.PutMessageBuffer(elem.buffer)
-			}
+			device.PutMessageBuffer(elem.buffer)
 			device.PutInboundElement(elem)
 			elem = nil
 		}
@@ -554,15 +491,13 @@ func (peer *Peer) RoutineSequentialReceiver() {
 		}
 
 		// wait for decryption
-
 		elem.Lock()
-
-		if elem.IsDropped() {
+		if elem.packet == nil {
+			// decryption failed
 			continue
 		}
 
 		// check for replay
-
 		if !elem.keypair.replayFilter.ValidateCounter(elem.counter, RejectAfterMessages) {
 			continue
 		}
