@@ -7,6 +7,8 @@ package device
 
 import (
 	"testing"
+
+	kyber "gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber"
 )
 
 func TestCookieMAC1(t *testing.T) {
@@ -18,11 +20,7 @@ func TestCookieMAC1(t *testing.T) {
 		checker   CookieChecker
 	)
 
-	sk, err := newPrivateKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	pk := sk.publicKey()
+	pk, _ := kyber.KeyGen(nil)
 
 	generator.Init(pk)
 	checker.Init(pk)

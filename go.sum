@@ -201,6 +201,8 @@ github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae/go.mod h1:DD4vA1
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 gitlab.kudelski.com/ks-fun/go-pqs v0.0.0-20210120160141-7b2354156e7a h1:soW9qXBEF6pDRYGA9Zzfb5FegLmHbyxkPkqnzTAhn08=
 gitlab.kudelski.com/ks-fun/go-pqs v0.0.0-20210120160141-7b2354156e7a/go.mod h1:03Hpd7q5gfxQPWctJIbWQloqkXS7brftrC0KKfznBRQ=
+gitlab.kudelski.com/ks-fun/go-pqs v0.0.0-20210121125748-30131f3e9bf0 h1:AHYYjD7W9TMS/HYW5qY8wCLYeL42iDn+i3rNf6hWsJ4=
+gitlab.kudelski.com/ks-fun/go-pqs v0.0.0-20210121125748-30131f3e9bf0/go.mod h1:03Hpd7q5gfxQPWctJIbWQloqkXS7brftrC0KKfznBRQ=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=
 go.opencensus.io v0.22.0/go.mod h1:+kGneAE2xo2IficOXnaByMWTGM9T73dGwxeWcUqIpI8=
 go.opencensus.io v0.22.2/go.mod h1:yxeiOL68Rb0Xd1ddK5vPZ/oVn4vY4Ynel7k9FzqtOIw=

@@ -6,11 +6,11 @@
 package device
 
 import (
+	"bytes"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
-	"bytes"
 
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/net/ipv4"
@@ -20,7 +20,6 @@ import (
 	"golang.zx2c4.com/wireguard/rwcancel"
 	"golang.zx2c4.com/wireguard/tun"
 )
-
 
 type Device struct {
 	isUp     AtomicBool // device is (going) up
@@ -228,13 +227,13 @@ func (device *Device) IsUnderLoad() bool {
 }
 
 //Set the KEM keys
-func (device *Device) SetKeys(sk KyberKEMSK, pk KyberKEMPK) error {
+func (device *Device) SetPrivateKey(sk KyberKEMSK) error {
 	// lock required resources
 
 	device.staticIdentity.Lock()
 	defer device.staticIdentity.Unlock()
 
-	if bytes.Compare(sk[:], device.staticIdentity.privateKey[:]) ==0 {
+	if bytes.Compare(sk[:], device.staticIdentity.privateKey[:]) == 0 {
 		//already up to date
 		return nil
 	}
@@ -248,17 +247,54 @@ func (device *Device) SetKeys(sk KyberKEMSK, pk KyberKEMPK) error {
 		lockedPeers = append(lockedPeers, peer)
 	}
 
+	// update key material
+
+	device.staticIdentity.privateKey = sk
+
+	// do static-static DH pre-computations
+
+	expiredPeers := make([]*Peer, 0, len(device.peers.keyMap))
+	for _, peer := range device.peers.keyMap {
+		handshake := &peer.handshake
+		handshake.precomputedStaticStatic = device.staticIdentity.privateKey.sharedSecret(handshake.remoteStatic) //here
+		expiredPeers = append(expiredPeers, peer)
+	}
+
+	for _, peer := range lockedPeers {
+		peer.handshake.mutex.RUnlock()
+	}
+	for _, peer := range expiredPeers {
+		peer.ExpireCurrentKeypairs()
+	}
+
+	return nil
+}
+
+//Set the KEM keys
+func (device *Device) SetPublicKey(pk KyberKEMPK) error {
+	// lock required resources
+
+	device.staticIdentity.Lock()
+	defer device.staticIdentity.Unlock()
+
+	device.peers.Lock()
+	defer device.peers.Unlock()
+
+	lockedPeers := make([]*Peer, 0, len(device.peers.keyMap))
+	for _, peer := range device.peers.keyMap {
+		peer.handshake.mutex.RLock()
+		lockedPeers = append(lockedPeers, peer)
+	}
+
 	// remove peers with matching public keys
 
 	for hk, peer := range device.peers.keyMap {
-		if bytes.Compare(peer.handshake.remoteStatic[:],pk[:]) ==0{
+		if bytes.Compare(peer.handshake.remoteStatic[:], pk[:]) == 0 {
 			unsafeRemovePeer(device, peer, hk)
 		}
 	}
 
 	// update key material
-
-	device.staticIdentity.privateKey = sk
 	device.staticIdentity.publicKey = pk
 	device.cookieChecker.Init(pk)
 
@@ -267,7 +303,7 @@ func (device *Device) SetKeys(sk KyberKEMSK, pk KyberKEMPK) error {
 	expiredPeers := make([]*Peer, 0, len(device.peers.keyMap))
 	for _, peer := range device.peers.keyMap {
 		handshake := &peer.handshake
-		handshake.precomputedStaticStatic = device.staticIdentity.privateKey.sharedSecret(handshake.remoteStatic)//here
+		handshake.precomputedStaticStatic = device.staticIdentity.privateKey.sharedSecret(handshake.remoteStatic) //here
 		expiredPeers = append(expiredPeers, peer)
 	}
 

@@ -10,23 +10,16 @@ import (
 	"encoding/hex"
 	"errors"
 
-	"gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber/utils"
+	utils "gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber/utils"
 	"golang.org/x/crypto/chacha20poly1305"
 )
 
-const (
-	NoisePublicKeySize  = 32
-	NoisePrivateKeySize = 32
-)
-
 type (
-	//NoisePublicKey    [NoisePublicKeySize]byte
-	//NoisePrivateKey   [NoisePrivateKeySize]byte
 	NoiseSymmetricKey [chacha20poly1305.KeySize]byte
 	NoiseNonce        uint64 // padded to 12-bytes
 
-	KyberPKEPK [utils.SIZEPKPKE]byte
-	KyberPKESK [utils.SIZESKPKE]byte
+	KyberPKEPK [utils.SIZEPK]byte
+	KyberPKESK [utils.SIZEPKESK]byte
 
 	KyberKEMPK [utils.SIZEPK]byte
 	KyberKEMSK [utils.SIZESK]byte
@@ -44,8 +37,6 @@ func loadExactHex(dst []byte, src string) error {
 	return nil
 }
 
-// NEED FOR TO/FROM HEX??
-
 func (key KyberKEMSK) IsZero() bool {
 	var zero KyberKEMSK
 	return key.Equals(zero)
@@ -55,34 +46,16 @@ func (key KyberKEMSK) Equals(tar KyberKEMSK) bool {
 	return subtle.ConstantTimeCompare(key[:], tar[:]) == 1
 }
 
-/**
-func (key *NoisePrivateKey) FromHex(src string) (err error) {
-	err = loadExactHex(key[:], src)
-	key.clamp()
-	return
-}
-
-func (key *NoisePrivateKey) FromMaybeZeroHex(src string) (err error) {
-	err = loadExactHex(key[:], src)
-	if key.IsZero() {
-		return
-	}
-	key.clamp()
-	return
-}
-
-func (key NoisePrivateKey) ToHex() string {
+func KeyToHex(key []byte) string {
 	return hex.EncodeToString(key[:])
 }
 
-func (key *NoisePublicKey) FromHex(src string) error {
+func (key KyberKEMSK) FromHex(src string) error {
 	return loadExactHex(key[:], src)
 }
 
-**/
-//transforms a key to hex
-func (key []byte) ToHex() string {
-	return hex.EncodeToString(key[:])
+func (key KyberKEMPK) FromHex(src string) error {
+	return loadExactHex(key[:], src)
 }
 
 func (key KyberKEMPK) IsZero() bool {

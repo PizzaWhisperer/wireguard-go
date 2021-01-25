@@ -7,16 +7,34 @@ package device
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/subtle"
 	"hash"
 
+	kyber "gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber"
 	"golang.org/x/crypto/blake2s"
+	"golang.org/x/crypto/sha3"
 )
 
 /* KDF related functions.
  * HMAC-based Key Derivation Function (HKDF)
  * https://tools.ietf.org/html/rfc5869
  */
+
+func CPAEncaps(pk KyberPKEPK) ([]byte, []byte) {
+	var msg []byte
+	rand.Read(msg[:])
+	kr := sha3.Sum512(msg[:])
+	c := kyber.Encrypt(kr[:32], kr[32:], pk)
+	ss := blake2s.Sum256(kr[:32])
+	return c, ss[:]
+}
+
+func CPADecaps(c []byte, sk KyberPKESK) []byte {
+	k := kyber.Decrypt(c, sk)
+	ss := blake2s.Sum256(k)
+	return ss[:]
+}
 
 func HMAC1(sum *[blake2s.Size]byte, key, in0 []byte) {
 	mac := hmac.New(func() hash.Hash {
@@ -60,6 +78,7 @@ func KDF3(t0, t1, t2 *[blake2s.Size]byte, key, input []byte) {
 }
 
 func isZero(val []byte) bool {
+	return false
 	acc := 1
 	for _, b := range val {
 		acc &= subtle.ConstantTimeByteEq(b, 0)
@@ -74,27 +93,7 @@ func setZero(arr []byte) {
 	}
 }
 
-/**
-func (sk *NoisePrivateKey) clamp() {
-	sk[0] &= 248
-	sk[31] = (sk[31] & 127) | 64
-}
-
-func newPrivateKey() (sk NoisePrivateKey, err error) {
-	_, err = rand.Read(sk[:])
-	sk.clamp()
-	return
-}
-
-func (sk *NoisePrivateKey) publicKey() (pk NoisePublicKey) {
-	apk := (*[NoisePublicKeySize]byte)(&pk)
-	ask := (*[NoisePrivateKeySize]byte)(sk)
-	curve25519.ScalarBaseMult(apk, ask)
-	return
-}
-**/
-
-func (sk *KyberPKESK) sharedSecret(pk KyberKEMPK) (ss [NoisePublicKeySize]byte) {
+func (sk *KyberPKESK) sharedSecret(pk KyberKEMPK) (ss [PlaceHolder]byte) {
 	//here
 	//apk := (*[NoisePublicKeySize]byte)(&pk)
 	//ask := (*[NoisePrivateKeySize]byte)(sk)
@@ -102,7 +101,7 @@ func (sk *KyberPKESK) sharedSecret(pk KyberKEMPK) (ss [NoisePublicKeySize]byte) 
 	return ss
 }
 
-func (sk *KyberKEMSK) sharedSecret(pk KyberKEMPK) (ss [NoisePublicKeySize]byte) {
+func (sk *KyberKEMSK) sharedSecret(pk KyberKEMPK) (ss [PlaceHolder]byte) {
 	//encaps and keep K
 	//here
 	//apk := (*[NoisePublicKeySize]byte)(&pk)

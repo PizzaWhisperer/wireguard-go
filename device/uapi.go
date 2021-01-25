@@ -56,7 +56,10 @@ func (device *Device) IpcGetOperation(w io.Writer) error {
 		// serialize device related values
 
 		if !device.staticIdentity.privateKey.IsZero() {
-			send("private_key=" + (device.staticIdentity.privateKey[:]).ToHex())
+			send("private_key=" + KeyToHex(device.staticIdentity.privateKey[:]))
+		}
+		if !device.staticIdentity.publicKey.IsZero() {
+			send("public_key=" + KeyToHex(device.staticIdentity.publicKey[:]))
 		}
 
 		if device.net.port != 0 {
@@ -73,8 +76,8 @@ func (device *Device) IpcGetOperation(w io.Writer) error {
 			peer.RLock()
 			defer peer.RUnlock()
 
-			send("public_key=" + peer.handshake.remoteStatic[:].ToHex())
-			send("preshared_key=" + peer.handshake.presharedKey[:].ToHex())
+			send("public_key=" + KeyToHex(peer.handshake.remoteStatic[:]))
+			send("preshared_key=" + KeyToHex(peer.handshake.presharedKey[:]))
 			send("protocol_version=1")
 			if peer.endpoint != nil {
 				send("endpoint=" + peer.endpoint.DstToString())
@@ -141,8 +144,8 @@ func (device *Device) IpcSetOperation(r io.Reader) error {
 
 			switch key {
 			case "private_key":
-				var sk NoisePrivateKey
-				err := sk.FromMaybeZeroHex(value)
+				var sk KyberKEMSK
+				err := sk.FromHex(value)
 				if err != nil {
 					logError.Println("Failed to set private_key:", err)
 					return &IPCError{ipc.IpcErrorInvalid}
@@ -198,6 +201,14 @@ func (device *Device) IpcSetOperation(r io.Reader) error {
 				}
 
 			case "public_key":
+				var pk KyberKEMPK
+				err := pk.FromHex(value)
+				if err != nil {
+					logError.Println("Failed to set public_key:", err)
+					return &IPCError{ipc.IpcErrorInvalid}
+				}
+				logDebug.Println("UAPI: Updating public key")
+				device.SetPublicKey(pk)
 				// switch to peer configuration
 				logDebug.Println("UAPI: Transition to peer configuration")
 				deviceConfig = false
@@ -224,7 +235,7 @@ func (device *Device) IpcSetOperation(r io.Reader) error {
 
 			case "public_key":
 				var publicKey KyberKEMPK
-				err := publicKey.FromHex(value) //here
+				err := publicKey.FromHex(value)
 				if err != nil {
 					logError.Println("Failed to get peer by public key:", err)
 					return &IPCError{ipc.IpcErrorInvalid}
@@ -235,7 +246,6 @@ func (device *Device) IpcSetOperation(r io.Reader) error {
 				device.staticIdentity.RLock()
 				dummy = bytes.Compare(device.staticIdentity.publicKey[:], publicKey[:]) == 0
 				device.staticIdentity.RUnlock()
-
 				if dummy {
 					peer = &Peer{}
 				} else {
@@ -267,7 +277,8 @@ func (device *Device) IpcSetOperation(r io.Reader) error {
 					return &IPCError{ipc.IpcErrorInvalid}
 				}
 				if createdNewPeer && !dummy {
-					device.RemovePeer(peer.handshake.remoteStatic)
+					hpk := blake2s.Sum256(peer.handshake.remoteStatic[:])
+					device.RemovePeer(hpk)
 					peer = &Peer{}
 					dummy = true
 				}
@@ -283,7 +294,7 @@ func (device *Device) IpcSetOperation(r io.Reader) error {
 				if !dummy {
 					logDebug.Println(peer, "- UAPI: Removing")
 					hpk := blake2s.Sum256(peer.handshake.remoteStatic[:])
-					device.RemovePeer(hpk[:])
+					device.RemovePeer(hpk)
 				}
 				peer = &Peer{}
 				dummy = true

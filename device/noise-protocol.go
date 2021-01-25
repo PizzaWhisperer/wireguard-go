@@ -53,6 +53,7 @@ const (
 	WGIdentifier      = "WireGuard v1 zx2c4 Jason@zx2c4.com"
 	WGLabelMAC1       = "mac1----"
 	WGLabelCookie     = "cookie--"
+	PlaceHolder       = 32 //to modif
 )
 
 const (
@@ -63,8 +64,8 @@ const (
 )
 
 const (
-	MessageInitiationSize      = 148 + utils.SIZEC                                   // size of handshake initiation message ere add SIZEC
-	MessageResponseSize        = 92 + 2*utils.SIZEC                                  // size of response message
+	MessageInitiationSize      = 148 + utils.SIZEC                             // size of handshake initiation message ere add SIZEC
+	MessageResponseSize        = 92 + 2*utils.SIZEC                            // size of response message
 	MessageCookieReplySize     = 64                                            // size of cookie reply message
 	MessageTransportHeaderSize = 16                                            // size of data preceding content in transport message
 	MessageTransportSize       = MessageTransportHeaderSize + poly1305.TagSize // size of empty transport
@@ -88,7 +89,7 @@ type MessageInitiation struct {
 	Type      uint32
 	Sender    uint32
 	Ephemeral KyberPKEPK
-	Static    [NoisePublicKeySize + poly1305.TagSize]byte //sidi ?
+	Static    [blake2s.Size + poly1305.TagSize]byte
 	Timestamp [tai64n.TimestampSize + poly1305.TagSize]byte
 	Ct1       [utils.SIZEC]byte
 	MAC1      [blake2s.Size128]byte
@@ -99,7 +100,7 @@ type MessageResponse struct {
 	Type      uint32
 	Sender    uint32
 	Receiver  uint32
-	Ephemeral KyberPKEPK //epkr
+	Ephemeral KyberPKEPK
 	Ct2       [utils.SIZEC]byte
 	Ct3       [utils.SIZEC]byte
 	Empty     [poly1305.TagSize]byte
@@ -124,15 +125,15 @@ type MessageCookieReply struct {
 type Handshake struct {
 	state                     handshakeState
 	mutex                     sync.RWMutex
-	hash                      [blake2s.Size]byte       // hash value
-	chainKey                  [blake2s.Size]byte       // chain key
-	presharedKey              NoiseSymmetricKey        // psk
-	localEphemeral            KyberPKESK               // ephemeral secret key kyber PKE ske
-	localIndex                uint32                   // used to clear hash-table
-	remoteIndex               uint32                   // index for sending
-	remoteStatic              KyberKEMPK               // long term key
-	remoteEphemeral           KyberPKEPK               // ephemeral public key
-	precomputedStaticStatic   [NoisePublicKeySize]byte // precomputed shared secret
+	hash                      [blake2s.Size]byte // hash value
+	chainKey                  [blake2s.Size]byte // chain key
+	presharedKey              NoiseSymmetricKey  // psk
+	localEphemeral            KyberPKESK         // ephemeral secret key kyber PKE ske
+	localIndex                uint32             // used to clear hash-table
+	remoteIndex               uint32             // index for sending
+	remoteStatic              KyberKEMPK         // long term key
+	remoteEphemeral           KyberPKEPK         // ephemeral public key
+	precomputedStaticStatic   [PlaceHolder]byte  // precomputed shared secret
 	lastTimestamp             tai64n.Timestamp
 	lastInitiationConsumption time.Time
 	lastSentHandshake         time.Time
@@ -181,7 +182,7 @@ func init() {
 }
 
 func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, error) {
-	var errZeroECDHResult = errors.New("ECDH returned all zeros")
+	var errZeroECDHResult = errors.New("AKE returned all zeros")
 
 	device.staticIdentity.RLock()
 	defer device.staticIdentity.RUnlock()
@@ -195,28 +196,27 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 	handshake.hash = InitialHash
 	handshake.chainKey = InitialChainKey
 	pk, sk := kyber.PKEKeyGen(nil)
-	var hpk KyberPKEPK
-	copy(hpk[:], pk.Bytes())
-	var hsk KyberPKESK
-	copy(hsk[:], sk.Bytes())
-	handshake.localEphemeral = hsk
+	handshake.localEphemeral = sk
 	if err != nil {
 		return nil, err
 	}
 
 	handshake.mixHash(handshake.remoteStatic[:])
-	var ct1 [utils.SIZEC]byte
+	var ri [4]byte
+	var encSeed [2 * utils.SEEDBYTES]byte
+	KDF1(encSeed, sigi, ri) //sigma i ri
+	ct1, shk1 := kyber.Encaps(encSeed[:], handshake.remoteStatic)
 	msg := MessageInitiation{
 		Type:      MessageInitiationType,
-		Ephemeral: hpk,
-		Ct1:       ct1,
+		Ephemeral: pk,
 	}
+	copy(msg.Ct1[:], ct1[:])
 
 	handshake.mixKey(msg.Ephemeral[:])
 	handshake.mixHash(msg.Ephemeral[:])
 
 	// encrypt static key
-	ss := handshake.localEphemeral.sharedSecret(handshake.remoteStatic) //here
+	ss := handshake.localEphemeral.sharedSecret(handshake.remoteStatic)
 	if isZero(ss[:]) {
 		return nil, errZeroECDHResult
 	}
@@ -230,7 +230,7 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 
 	aead, _ := chacha20poly1305.New(key[:])
 	hpki := blake2s.Sum256(device.staticIdentity.publicKey[:])
-	aead.Seal(msg.Static[:0], ZeroNonce[:], hpki[:], handshake.hash[:])
+	aead.Seal(msg.Static[:0], ZeroNonce[:], hpki[:], handshake.hash[:]) //ltk
 	handshake.mixHash(msg.Static[:])
 
 	// encrypt timestamp
@@ -383,28 +383,24 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	if err != nil {
 		return nil, err
 	}
-	var ct2 [utils.SIZEC]byte
-	ct2[0] = 1
-	var ct3 [utils.SIZEC]byte
+	var seed [32]byte
+	ct2, shk2 := CPAEncaps(handshake.remoteEphemeral)
+	ct3, shk3 := kyber.Encaps(seed[:], handshake.remoteStatic)
 
 	var msg MessageResponse
 	msg.Type = MessageResponseType
 	msg.Sender = handshake.localIndex
 	msg.Receiver = handshake.remoteIndex
-	msg.Ct2 = ct2
-	msg.Ct3 = ct3
+	copy(msg.Ct2[:], ct2[:])
+	copy(msg.Ct3[:], ct3[:])
 	// create ephemeral key
 
 	pk, sk := kyber.PKEKeyGen(nil)
-	var hpk KyberPKEPK
-	copy(hpk[:], pk.Bytes())
-	var hsk KyberPKESK
-	copy(hsk[:], sk.Bytes())
-	handshake.localEphemeral = hsk
+	handshake.localEphemeral = sk
 	if err != nil {
 		return nil, err
 	}
-	msg.Ephemeral = hpk
+	msg.Ephemeral = pk
 	handshake.mixHash(msg.Ephemeral[:])
 	handshake.mixKey(msg.Ephemeral[:])
 

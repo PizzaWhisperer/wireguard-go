@@ -8,27 +8,9 @@ package device
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"testing"
 )
-
-/**
-func TestCurveWrappers(t *testing.T) {
-	sk1, err := newPrivateKey()
-	assertNil(t, err)
-
-	sk2, err := newPrivateKey()
-	assertNil(t, err)
-
-	pk1 := sk1.publicKey()
-	pk2 := sk2.publicKey()
-
-	ss1 := sk1.sharedSecret(pk2)
-	ss2 := sk2.sharedSecret(pk1)
-
-	if ss1 != ss2 {
-		t.Fatal("Failed to compute shared secet")
-	}
-}**/
 
 func TestNoiseHandshake(t *testing.T) {
 	dev1 := randDevice(t)
@@ -37,8 +19,19 @@ func TestNoiseHandshake(t *testing.T) {
 	defer dev1.Close()
 	defer dev2.Close()
 
-	peer1, _ := dev2.NewPeer(dev1.staticIdentity.publicKey)
-	peer2, _ := dev1.NewPeer(dev2.staticIdentity.publicKey)
+	peer1, err := dev2.NewPeer(dev1.staticIdentity.publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer2, err := dev1.NewPeer(dev2.staticIdentity.publicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Printf("q%+v\n", peer1.handshake.localEphemeral)
+	fmt.Printf("w%+v\n", peer2)
+
+	fmt.Printf("t%+v\n", peer1.handshake.precomputedStaticStatic[:])
 
 	assertEqual(
 		t,
@@ -54,6 +47,7 @@ func TestNoiseHandshake(t *testing.T) {
 
 	msg1, err := dev1.CreateMessageInitiation(peer2)
 	assertNil(t, err)
+	fmt.Printf("p%+v\n", msg1)
 
 	packet := make([]byte, 0, 256)
 	writer := bytes.NewBuffer(packet)
@@ -63,6 +57,9 @@ func TestNoiseHandshake(t *testing.T) {
 	if peer == nil {
 		t.Fatal("handshake failed at initiation message")
 	}
+	fmt.Printf("e%+v\n", peer)
+	fmt.Printf("y%+v\n", peer1.handshake.chainKey[:])
+	fmt.Printf("l%+v\n", peer1.handshake.hash[:])
 
 	assertEqual(
 		t,
@@ -82,11 +79,13 @@ func TestNoiseHandshake(t *testing.T) {
 
 	msg2, err := dev2.CreateMessageResponse(peer1)
 	assertNil(t, err)
+	fmt.Printf("g%+v\n", msg2)
 
 	peer = dev1.ConsumeMessageResponse(msg2)
 	if peer == nil {
 		t.Fatal("handshake failed at response message")
 	}
+	fmt.Printf("u%+v\n", peer)
 
 	assertEqual(
 		t,
