@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/blake2s"
+	"golang.org/x/crypto/sha3"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 	"golang.zx2c4.com/wireguard/conn"
@@ -48,6 +49,7 @@ type Device struct {
 		sync.RWMutex
 		privateKey KyberKEMSK
 		publicKey  KyberKEMPK
+		sigma      []byte //long term secret
 	}
 
 	peers struct {
@@ -268,13 +270,13 @@ func (device *Device) SetPrivateKey(sk KyberKEMSK) error {
 	// update key material
 
 	device.staticIdentity.privateKey = sk
+	sig := sha3.Sum256(sk[:])
+	device.staticIdentity.sigma = sig[:]
 
 	// do static-static DH pre-computations
 
 	expiredPeers := make([]*Peer, 0, len(device.peers.keyMap))
 	for _, peer := range device.peers.keyMap {
-		handshake := &peer.handshake
-		handshake.precomputedStaticStatic = device.staticIdentity.privateKey.sharedSecret(handshake.remoteStatic) //here
 		expiredPeers = append(expiredPeers, peer)
 	}
 
@@ -321,7 +323,14 @@ func (device *Device) SetPublicKey(pk KyberKEMPK) error {
 	expiredPeers := make([]*Peer, 0, len(device.peers.keyMap))
 	for _, peer := range device.peers.keyMap {
 		handshake := &peer.handshake
-		handshake.precomputedStaticStatic = device.staticIdentity.privateKey.sharedSecret(handshake.remoteStatic) //here
+		var h KyberKEMPK
+		for i, b := range device.staticIdentity.publicKey {
+			h[i] = b | handshake.remoteStatic[i]
+		}
+		hpks := blake2s.Sum256(h[:])
+		handshake.presharedKey = hpks[:]
+		//var ss NoiseSymmetricKey
+		//handshake.precomputedStaticStatic = ss //device.staticIdentity.privateKey.sharedSecret(handshake.remoteStatic) //here
 		expiredPeers = append(expiredPeers, peer)
 	}
 

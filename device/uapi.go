@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"encoding/hex"
 	"net"
 	"strconv"
 	"strings"
@@ -306,7 +307,8 @@ func (device *Device) IpcSetOperation(r io.Reader) error {
 				logDebug.Println(peer, "- UAPI: Updating preshared key")
 
 				peer.handshake.mutex.Lock()
-				err := peer.handshake.presharedKey.FromHex(value)
+				psk, err := hex.DecodeString(value)
+				copy(peer.handshake.presharedKey[:], psk[:])
 				peer.handshake.mutex.Unlock()
 
 				if err != nil {

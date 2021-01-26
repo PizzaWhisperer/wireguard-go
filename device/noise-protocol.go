@@ -6,6 +6,7 @@
 package device
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/chacha20poly1305"
 	"golang.org/x/crypto/poly1305"
+	"golang.org/x/crypto/sha3"
 
 	"gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber"
 	"gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber/utils"
@@ -123,17 +125,17 @@ type MessageCookieReply struct {
 }
 
 type Handshake struct {
-	state                     handshakeState
-	mutex                     sync.RWMutex
-	hash                      [blake2s.Size]byte // hash value
-	chainKey                  [blake2s.Size]byte // chain key
-	presharedKey              NoiseSymmetricKey  // psk
-	localEphemeral            KyberPKESK         // ephemeral secret key kyber PKE ske
-	localIndex                uint32             // used to clear hash-table
-	remoteIndex               uint32             // index for sending
-	remoteStatic              KyberKEMPK         // long term key
-	remoteEphemeral           KyberPKEPK         // ephemeral public key
-	precomputedStaticStatic   [PlaceHolder]byte  // precomputed shared secret
+	state           handshakeState
+	mutex           sync.RWMutex
+	hash            [blake2s.Size]byte // hash value
+	chainKey        [blake2s.Size]byte // chain key
+	presharedKey    []byte             // H(psk)
+	localEphemeral  KyberPKESK         // ephemeral secret key kyber PKE ske
+	localIndex      uint32             // used to clear hash-table
+	remoteIndex     uint32             // index for sending
+	remoteStatic    KyberKEMPK         // long term key
+	remoteEphemeral KyberPKEPK         // ephemeral public key
+	//precomputedStaticStatic   [PlaceHolder]byte  // precomputed shared secret
 	lastTimestamp             tai64n.Timestamp
 	lastInitiationConsumption time.Time
 	lastSentHandshake         time.Time
@@ -182,7 +184,7 @@ func init() {
 }
 
 func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, error) {
-	var errZeroECDHResult = errors.New("AKE returned all zeros")
+	//var errZeroECDHResult = errors.New("AKE returned all zeros")
 
 	device.staticIdentity.RLock()
 	defer device.staticIdentity.RUnlock()
@@ -201,10 +203,11 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 		return nil, err
 	}
 
-	handshake.mixHash(handshake.remoteStatic[:])
 	var ri [4]byte
-	var encSeed [2 * utils.SEEDBYTES]byte
-	KDF1(encSeed, sigi, ri) //sigma i ri
+	rand.Read(ri[:])
+
+	encSeed := sha3.Sum512(append(device.staticIdentity.sigma, ri[:]...))
+	//KDF1(encSeed[:blake2s.Size], device.staticIdentity.sigma, ri[:])
 	ct1, shk1 := kyber.Encaps(encSeed[:], handshake.remoteStatic)
 	msg := MessageInitiation{
 		Type:      MessageInitiationType,
@@ -213,36 +216,32 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 	copy(msg.Ct1[:], ct1[:])
 
 	handshake.mixKey(msg.Ephemeral[:])
-	handshake.mixHash(msg.Ephemeral[:])
+	//C2
+	chainKey := &handshake.chainKey //== C2
 
-	// encrypt static key
-	ss := handshake.localEphemeral.sharedSecret(handshake.remoteStatic)
-	if isZero(ss[:]) {
-		return nil, errZeroECDHResult
-	}
+	handshake.mixHash(handshake.remoteStatic[:])
+	//H2
+	handshake.mixHash(msg.Ephemeral[:])
+	//H3
+
 	var key [chacha20poly1305.KeySize]byte
-	KDF2(
-		&handshake.chainKey,
-		&key,
-		handshake.chainKey[:],
-		ss[:],
-	)
+	KDF2(&handshake.chainKey, &key, handshake.chainKey[:], shk1)
+	//chainKey == C3
+	//key == k3
 
 	aead, _ := chacha20poly1305.New(key[:])
 	hpki := blake2s.Sum256(device.staticIdentity.publicKey[:])
-	aead.Seal(msg.Static[:0], ZeroNonce[:], hpki[:], handshake.hash[:]) //ltk
+	aead.Seal(msg.Static[:0], ZeroNonce[:], hpki[:], handshake.hash[:])
+
 	handshake.mixHash(msg.Static[:])
+	//H4
 
 	// encrypt timestamp
-	if isZero(handshake.precomputedStaticStatic[:]) {
-		return nil, errZeroECDHResult
-	}
-	KDF2(
-		&handshake.chainKey,
-		&key,
-		handshake.chainKey[:],
-		handshake.precomputedStaticStatic[:],
-	)
+
+	KDF2(chainKey, &key, chainKey[:], handshake.presharedKey)
+	//key == k4
+	handshake.mixKey(handshake.presharedKey)
+	//chainKey == C4
 	timestamp := tai64n.Now()
 	aead, _ = chacha20poly1305.New(key[:])
 	aead.Seal(msg.Timestamp[:0], ZeroNonce[:], timestamp[:], handshake.hash[:])
@@ -256,8 +255,12 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 	handshake.localIndex = msg.Sender
 
 	handshake.mixHash(msg.Timestamp[:])
+	//H5
+
 	handshake.state = handshakeInitiationCreated
 	return &msg, nil
+
+	//at the end, chainkey is C4 and hash is H5
 }
 
 func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
@@ -274,25 +277,28 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 	defer device.staticIdentity.RUnlock()
 
 	mixHash(&hash, &InitialHash, device.staticIdentity.publicKey[:])
+	//H2
 	mixHash(&hash, &hash, msg.Ephemeral[:])
+	//H3
 	mixKey(&chainKey, &InitialChainKey, msg.Ephemeral[:])
+	//C2
+
+	C2 := &chainKey
 
 	// decrypt static key
 	var err error
 	var hpeerPK [blake2s.Size]byte
 	var key [chacha20poly1305.KeySize]byte
-	//ss := device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral) //here static key used?
-	var ss NoiseSymmetricKey
-	if isZero(ss[:]) {
-		return nil
-	}
-	KDF2(&chainKey, &key, chainKey[:], ss[:])
+	shk1 := kyber.Decaps(msg.Ct1[:], device.staticIdentity.privateKey)
+	KDF2(&chainKey, &key, C2[:], shk1)
+	//C3
 	aead, _ := chacha20poly1305.New(key[:])
 	_, err = aead.Open(hpeerPK[:0], ZeroNonce[:], msg.Static[:], hash[:])
 	if err != nil {
 		return nil
 	}
 	mixHash(&hash, &hash, msg.Static[:])
+	//H4
 
 	// lookup peer
 
@@ -309,16 +315,9 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 
 	handshake.mutex.RLock()
 
-	if isZero(handshake.precomputedStaticStatic[:]) {
-		handshake.mutex.RUnlock()
-		return nil
-	}
-	KDF2(
-		&chainKey,
-		&key,
-		chainKey[:],
-		handshake.precomputedStaticStatic[:],
-	)
+	KDF2(&chainKey, &key, C2[:], handshake.presharedKey[:])
+	mixKey(&chainKey, &chainKey, handshake.presharedKey)
+	//C4
 	aead, _ = chacha20poly1305.New(key[:])
 	_, err = aead.Open(timestamp[:0], ZeroNonce[:], msg.Timestamp[:], hash[:])
 	if err != nil {
@@ -326,6 +325,7 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 		return nil
 	}
 	mixHash(&hash, &hash, msg.Timestamp[:])
+	//H5
 
 	// protect against replay & flood
 
@@ -341,12 +341,14 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 		return nil
 	}
 
+	//mixKey(&chainKey, &chainKey, shk1)
+
 	// update handshake state
 
 	handshake.mutex.Lock()
 
-	handshake.hash = hash
-	handshake.chainKey = chainKey
+	handshake.hash = hash         //H5
+	handshake.chainKey = chainKey //C4
 	handshake.remoteIndex = msg.Sender
 	handshake.remoteEphemeral = msg.Ephemeral
 	if timestamp.After(handshake.lastTimestamp) {
@@ -383,55 +385,60 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	if err != nil {
 		return nil, err
 	}
-	var seed [32]byte//KDF1
-	ct2, shk2 := CPAEncaps(handshake.remoteEphemeral)
-	ct3, shk3 := kyber.Encaps(seed[:], handshake.remoteStatic)
 
 	var msg MessageResponse
 	msg.Type = MessageResponseType
 	msg.Sender = handshake.localIndex
 	msg.Receiver = handshake.remoteIndex
-	copy(msg.Ct2[:], ct2[:])
-	copy(msg.Ct3[:], ct3[:])
 	// create ephemeral key
 
-	pk, sk := kyber.PKEKeyGen(nil)
-	handshake.localEphemeral = sk
+	//pk, sk := kyber.PKEKeyGen(nil)
+	//	handshake.remoteEphemeral, handshake.localEphemeral = pk, sk
+	//handshake.remoteEphemeral, handshake.localEphemeral = kyber.PKEKeyGen(nil)
 	if err != nil {
 		return nil, err
 	}
-	msg.Ephemeral = pk
-	handshake.mixHash(msg.Ephemeral[:])
-	handshake.mixKey(msg.Ephemeral[:])
+	//msg.Ephemeral = pk
 
-	func() {
-		var ss NoiseSymmetricKey
-		//ss := handshake.localEphemeral.sharedSecret(handshake.remoteEphemeral)//here
-		handshake.mixKey(ss[:])
-		//ss = handshake.localEphemeral.sharedSecret(handshake.remoteStatic)//here
-		handshake.mixKey(ss[:])
-	}()
+	var rr [4]byte
+	rand.Read(rr[:])
+	encSeed := sha3.Sum512(append(device.staticIdentity.sigma, rr[:]...))
+	ct2, shk2 := CPAEncaps(handshake.remoteEphemeral)
+	//fmt.Printf("shk2 %+v\n", shk2)
+	ct3, shk3 := kyber.Encaps(encSeed[:], handshake.remoteStatic)
+	copy(msg.Ct2[:], ct2[:])
+	//fmt.Printf("pk %+v\n", handshake.remoteEphemeral)
+
+	copy(msg.Ct3[:], ct3[:])
+
+	//c4 and h5 in handshake
+	handshake.mixKey(ct2) //c6
+	//	fmt.Printf("seed %+v\n", handshake.chainKey)
+	handshake.mixKey(shk2) //c7
+	handshake.mixKey(shk3) //c8
+
+	handshake.mixHash(ct2) //H6
+	//fmt.Printf("hash %+v\n", handshake.hash)
 
 	// add preshared key
 
-	var tau [blake2s.Size]byte
+	var tau [blake2s.Size]byte //KDF2(c8, psk)
 	var key [chacha20poly1305.KeySize]byte
 
 	KDF3(
-		&handshake.chainKey,
-		&tau,
-		&key,
+		&handshake.chainKey, //c9
+		&tau,                //KDF2
+		&key,                //k9
 		handshake.chainKey[:],
 		handshake.presharedKey[:],
 	)
 
-	handshake.mixHash(tau[:])
+	handshake.mixHash(tau[:]) //h9
 
 	func() {
-		//key
 		aead, _ := chacha20poly1305.New(key[:])
 		aead.Seal(msg.Empty[:0], ZeroNonce[:], nil, handshake.hash[:])
-		handshake.mixHash(msg.Empty[:])
+		handshake.mixHash(msg.Empty[:]) //H10
 	}()
 
 	handshake.state = handshakeResponseCreated
@@ -468,42 +475,44 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 			return false
 		}
 
+		copy(chainKey[:], handshake.chainKey[:])
+		copy(hash[:], handshake.hash[:])
+
 		// lock private key for reading
 
 		device.staticIdentity.RLock()
 		defer device.staticIdentity.RUnlock()
 
-		// finish 3-way DH
+		//C4 and H5 in handshake
+		//var sk KyberPKESK
+		//fmt.Printf("ct2 %+v\n", msg.Ct2)
+		shk2 := CPADecaps(msg.Ct2[:], handshake.localEphemeral)
+		//fmt.Printf("pk %+v\n", handshake.remoteEphemeral)
+		//fmt.Printf("sk %+v\n", handshake.localEphemeral)
 
-		mixHash(&hash, &handshake.hash, msg.Ephemeral[:])
-		mixKey(&chainKey, &handshake.chainKey, msg.Ephemeral[:])
+		//fmt.Printf("shk2 %+v\n", shk2)
+		mixKey(&chainKey, &chainKey, msg.Ct2[:]) //c6
+		//	fmt.Printf("seed %+v\n", handshake.chainKey)
+		mixKey(&chainKey, &chainKey, shk2) //c7
+		shk3 := kyber.Decaps(msg.Ct3[:], device.staticIdentity.privateKey)
+		mixKey(&chainKey, &chainKey, shk3) //c8
 
-		func() {
-			//ss := handshake.localEphemeral.sharedSecret(msg.Ephemeral)
-			var ss NoiseSymmetricKey
-			mixKey(&chainKey, &chainKey, ss[:])
-			setZero(ss[:])
-		}()
-
-		func() {
-			//ss := device.staticIdentity.privateKey.sharedSecret(msg.Ephemeral)
-			var ss NoiseSymmetricKey
-			mixKey(&chainKey, &chainKey, ss[:])
-			setZero(ss[:])
-		}()
+		mixHash(&hash, &hash, msg.Ct2[:]) //H6
+		//	fmt.Printf("hash is %+v\n", handshake.hash)
 
 		// add preshared key (psk)
 
 		var tau [blake2s.Size]byte
 		var key [chacha20poly1305.KeySize]byte
 		KDF3(
-			&chainKey,
-			&tau,
+			&chainKey, //c9
+			&tau,      //KDF2(c8, psk)
 			&key,
 			chainKey[:],
 			handshake.presharedKey[:],
 		)
-		mixHash(&hash, &hash, tau[:])
+
+		mixHash(&hash, &hash, tau[:]) //H9
 
 		// authenticate transcript
 
@@ -512,7 +521,8 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 		if err != nil {
 			return false
 		}
-		mixHash(&hash, &hash, msg.Empty[:])
+
+		mixHash(&hash, &hash, msg.Empty[:]) //H10
 		return true
 	}()
 
@@ -524,8 +534,8 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 
 	handshake.mutex.Lock()
 
-	handshake.hash = hash
-	handshake.chainKey = chainKey
+	handshake.hash = hash         //must be H10
+	handshake.chainKey = chainKey //must be C9
 	handshake.remoteIndex = msg.Sender
 	handshake.state = handshakeResponseConsumed
 

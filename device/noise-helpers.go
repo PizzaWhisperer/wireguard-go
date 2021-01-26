@@ -78,7 +78,6 @@ func KDF3(t0, t1, t2 *[blake2s.Size]byte, key, input []byte) {
 }
 
 func isZero(val []byte) bool {
-	return false
 	acc := 1
 	for _, b := range val {
 		acc &= subtle.ConstantTimeByteEq(b, 0)
@@ -91,21 +90,4 @@ func setZero(arr []byte) {
 	for i := range arr {
 		arr[i] = 0
 	}
-}
-
-func (sk *KyberPKESK) sharedSecret(pk KyberKEMPK) (ss [PlaceHolder]byte) {
-	//here
-	//apk := (*[NoisePublicKeySize]byte)(&pk)
-	//ask := (*[NoisePrivateKeySize]byte)(sk)
-	//curve25519.ScalarMult(&ss, ask, apk)
-	return ss
-}
-
-func (sk *KyberKEMSK) sharedSecret(pk KyberKEMPK) (ss [PlaceHolder]byte) {
-	//encaps and keep K
-	//here
-	//apk := (*[NoisePublicKeySize]byte)(&pk)
-	//ask := (*[NoisePrivateKeySize]byte)(sk)
-	//curve25519.ScalarMult(&ss, ask, apk)
-	return ss
 }

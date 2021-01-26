@@ -95,15 +95,6 @@ func (device *Device) NewPeer(pk KyberKEMPK) (*Peer, error) {
 		return nil, errors.New("too many peers")
 	}
 
-	// create peer
-
-	peer := new(Peer)
-	peer.Lock()
-	defer peer.Unlock()
-
-	peer.cookieGenerator.Init(pk)
-	peer.device = device
-
 	// map public key
 	hpk := blake2s.Sum256(pk[:])
 	_, ok := device.peers.keyMap[hpk]
@@ -111,12 +102,20 @@ func (device *Device) NewPeer(pk KyberKEMPK) (*Peer, error) {
 		return nil, errors.New("adding existing peer")
 	}
 
+	// create peer
+	peer := new(Peer)
+	peer.Lock()
+	defer peer.Unlock()
+
+	peer.cookieGenerator.Init(pk)
+	peer.device = device
+
 	// pre-compute DH
 
 	handshake := &peer.handshake
 	handshake.mutex.Lock()
-	var ss NoiseSymmetricKey
-	handshake.precomputedStaticStatic = ss //device.staticIdentity.privateKey.sharedSecret(pk) here
+	//var ss NoiseSymmetricKey
+	//handshake.precomputedStaticStatic = ss //device.staticIdentity.privateKey.sharedSecret(pk) here
 	handshake.remoteStatic = pk
 	handshake.mutex.Unlock()
 

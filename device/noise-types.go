@@ -11,12 +11,10 @@ import (
 	"errors"
 
 	utils "gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber/utils"
-	"golang.org/x/crypto/chacha20poly1305"
 )
 
 type (
-	NoiseSymmetricKey [chacha20poly1305.KeySize]byte
-	NoiseNonce        uint64 // padded to 12-bytes
+	NoiseNonce uint64 // padded to 12-bytes
 
 	KyberPKEPK [utils.SIZEPK]byte
 	KyberPKESK [utils.SIZEPKESK]byte
@@ -65,12 +63,4 @@ func (key KyberKEMPK) IsZero() bool {
 
 func (key KyberKEMPK) Equals(tar KyberKEMPK) bool {
 	return subtle.ConstantTimeCompare(key[:], tar[:]) == 1
-}
-
-func (key *NoiseSymmetricKey) FromHex(src string) error {
-	return loadExactHex(key[:], src)
-}
-
-func (key NoiseSymmetricKey) ToHex() string {
-	return hex.EncodeToString(key[:])
 }

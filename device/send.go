@@ -190,7 +190,6 @@ func (peer *Peer) SendHandshakeResponse() error {
 	return err
 }
 
-//here
 func (device *Device) SendHandshakeCookie(initiatingElem *QueueHandshakeElement) error {
 
 	device.log.Debug.Println("Sending cookie response for denied handshake message for", initiatingElem.endpoint.DstToString())
