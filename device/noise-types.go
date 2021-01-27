@@ -48,6 +48,12 @@ func KeyToHex(key []byte) string {
 	return hex.EncodeToString(key[:])
 }
 
+func KeyFromHex(src string) ([]byte, error) {
+	var ret KyberKEMPK
+	err := loadExactHex(ret[:], src)
+	return ret[:], err
+}
+
 func (key KyberKEMSK) FromHex(src string) error {
 	return loadExactHex(key[:], src)
 }

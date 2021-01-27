@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -150,7 +151,7 @@ NextAttempt:
 			} else {
 				p.ip = net.ParseIP("1.0.0.2")
 			}
-			level := LogLevelDebug
+			level := LogLevelVerbose
 			if _, ok := tb.(*testing.B); ok && !testing.Verbose() {
 				level = LogLevelError
 			}
@@ -344,4 +345,15 @@ func BenchmarkThroughput(b *testing.B) {
 
 	b.ReportMetric(float64(elapsed)/float64(b.N), "ns/op")
 	b.ReportMetric(1-float64(b.N)/float64(sent), "packet-loss")
+}
+
+func BenchmarkUAPIGet(b *testing.B) {
+	pair := genTestPair(b)
+	pair.Send(b, Ping, nil)
+	pair.Send(b, Pong, nil)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		pair[0].dev.IpcGetOperation(ioutil.Discard)
+	}
 }
