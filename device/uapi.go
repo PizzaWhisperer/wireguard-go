@@ -136,7 +136,6 @@ func (device *Device) IpcSetOperation(r io.Reader) (err error) {
 	}()
 
 	peer := new(ipcSetPeer)
-	//deviceConfig := isZero(device.staticIdentity.publicKey[:])
 
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
@@ -152,19 +151,10 @@ func (device *Device) IpcSetOperation(r io.Reader) (err error) {
 		key := parts[0]
 		value := parts[1]
 
-		//if deviceConfig {
-			//err = device.handleDeviceLine(key, value)
-		//} else {
-			//err = device.handlePeerLine(peer, key, value)
-		//}
-
 		err = device.handleLine(peer, key, value)
 		if err != nil {
 			return err
 		}
-		//if key == "public_key"{
-		//	deviceConfig = false
-		//}
 	}
 
 	if err = scanner.Err(); err != nil {
