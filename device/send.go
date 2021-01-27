@@ -150,7 +150,6 @@ func (peer *Peer) SendHandshakeInitiation(isRetry bool) error {
 		peer.device.log.Errorf("%v - Failed to send handshake initiation: %v", peer, err)
 	}
 	peer.timersHandshakeInitiated()
-
 	return err
 }
 
@@ -380,7 +379,6 @@ NextPacket:
 				case <-peer.signals.newKeypairArrived:
 				default:
 				}
-
 				peer.SendHandshakeInitiation(false)
 
 				// wait for key to be established

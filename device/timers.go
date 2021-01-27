@@ -105,7 +105,6 @@ func expiredRetransmitHandshake(peer *Peer) {
 			peer.endpoint.ClearSrc()
 		}
 		peer.Unlock()
-
 		peer.SendHandshakeInitiation(true)
 	}
 }

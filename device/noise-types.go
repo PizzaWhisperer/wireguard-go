@@ -8,7 +8,6 @@ package device
 import (
 	"crypto/subtle"
 	"encoding/hex"
-	"errors"
 
 	utils "gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber/utils"
 )
@@ -28,9 +27,6 @@ func loadExactHex(dst []byte, src string) error {
 	if err != nil {
 		return err
 	}
-	if len(slice) != len(dst) {
-		return errors.New("hex string does not fit the slice")
-	}
 	copy(dst, slice)
 	return nil
 }
@@ -48,18 +44,8 @@ func KeyToHex(key []byte) string {
 	return hex.EncodeToString(key[:])
 }
 
-func KeyFromHex(src string) ([]byte, error) {
-	var ret KyberKEMPK
-	err := loadExactHex(ret[:], src)
-	return ret[:], err
-}
-
-func (key KyberKEMSK) FromHex(src string) error {
-	return loadExactHex(key[:], src)
-}
-
-func (key KyberKEMPK) FromHex(src string) error {
-	return loadExactHex(key[:], src)
+func FromHex(dst []byte, src string) error {
+	return loadExactHex(dst, src)
 }
 
 func (key KyberKEMPK) IsZero() bool {

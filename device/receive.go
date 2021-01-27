@@ -191,7 +191,6 @@ func (device *Device) RoutineReceiveIncoming(IP int, bind conn.Bind) {
 
 		case MessageInitiationType:
 			okay = len(packet) == MessageInitiationSize //to modif here
-
 		case MessageResponseType:
 			okay = len(packet) == MessageResponseSize
 

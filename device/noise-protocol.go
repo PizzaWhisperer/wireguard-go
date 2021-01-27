@@ -66,8 +66,8 @@ const (
 )
 
 const (
-	MessageInitiationSize      = 148 + utils.SIZEC                             // size of handshake initiation message ere add SIZEC
-	MessageResponseSize        = 92 + 2*utils.SIZEC                            // size of response message
+	MessageInitiationSize      = 2388                                          // size of handshake initiation message ere add SIZEC
+	MessageResponseSize        = 3420                                          //92 + 2*utils.SIZEC                            // size of response message
 	MessageCookieReplySize     = 64                                            // size of cookie reply message
 	MessageTransportHeaderSize = 16                                            // size of data preceding content in transport message
 	MessageTransportSize       = MessageTransportHeaderSize + poly1305.TagSize // size of empty transport
@@ -295,6 +295,7 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 	aead, _ := chacha20poly1305.New(key[:])
 	_, err = aead.Open(hpeerPK[:0], ZeroNonce[:], msg.Static[:], hash[:])
 	if err != nil {
+		println("first mac not ok")
 		return nil
 	}
 	mixHash(&hash, &hash, msg.Static[:])
@@ -404,21 +405,16 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	rand.Read(rr[:])
 	encSeed := sha3.Sum512(append(device.staticIdentity.sigma, rr[:]...))
 	ct2, shk2 := CPAEncaps(handshake.remoteEphemeral)
-	//fmt.Printf("shk2 %+v\n", shk2)
 	ct3, shk3 := kyber.Encaps(encSeed[:], handshake.remoteStatic)
 	copy(msg.Ct2[:], ct2[:])
-	//fmt.Printf("pk %+v\n", handshake.remoteEphemeral)
-
 	copy(msg.Ct3[:], ct3[:])
 
 	//c4 and h5 in handshake
-	handshake.mixKey(ct2) //c6
-	//	fmt.Printf("seed %+v\n", handshake.chainKey)
+	handshake.mixKey(ct2)  //c6
 	handshake.mixKey(shk2) //c7
 	handshake.mixKey(shk3) //c8
 
 	handshake.mixHash(ct2) //H6
-	//fmt.Printf("hash %+v\n", handshake.hash)
 
 	// add preshared key
 
@@ -484,21 +480,14 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 		defer device.staticIdentity.RUnlock()
 
 		//C4 and H5 in handshake
-		//var sk KyberPKESK
-		//fmt.Printf("ct2 %+v\n", msg.Ct2)
 		shk2 := CPADecaps(msg.Ct2[:], handshake.localEphemeral)
-		//fmt.Printf("pk %+v\n", handshake.remoteEphemeral)
-		//fmt.Printf("sk %+v\n", handshake.localEphemeral)
 
-		//fmt.Printf("shk2 %+v\n", shk2)
 		mixKey(&chainKey, &chainKey, msg.Ct2[:]) //c6
-		//	fmt.Printf("seed %+v\n", handshake.chainKey)
-		mixKey(&chainKey, &chainKey, shk2) //c7
+		mixKey(&chainKey, &chainKey, shk2)       //c7
 		shk3 := kyber.Decaps(msg.Ct3[:], device.staticIdentity.privateKey)
 		mixKey(&chainKey, &chainKey, shk3) //c8
 
 		mixHash(&hash, &hash, msg.Ct2[:]) //H6
-		//	fmt.Printf("hash is %+v\n", handshake.hash)
 
 		// add preshared key (psk)
 

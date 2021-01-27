@@ -255,7 +255,7 @@ func (device *Device) SetPrivateKey(sk KyberKEMSK) error {
 	defer device.staticIdentity.Unlock()
 
 	if bytes.Compare(sk[:], device.staticIdentity.privateKey[:]) == 0 {
-		//already up to date
+		//already up to date (or both all 0 !! TODO here)
 		return nil
 	}
 
