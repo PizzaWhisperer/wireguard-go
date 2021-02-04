@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	kyber "gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber"
 	"golang.zx2c4.com/wireguard/tun/tuntest"
 )
 
@@ -279,7 +278,7 @@ func assertEqual(t *testing.T, a, b []byte) {
 }
 
 func randDevice(t *testing.T) *Device {
-	pk, sk := kyber.KeyGen(nil)
+	pk, sk := k.KeyGen(nil)
 	var bpk KyberKEMPK
 	var bsk KyberKEMSK
 	copy(bpk[:], pk[:])
@@ -287,8 +286,8 @@ func randDevice(t *testing.T) *Device {
 	tun := newDummyTUN("dummy")
 	logger := NewLogger(LogLevelError, "")
 	device := NewDevice(tun, logger)
-	device.SetPrivateKey(sk)
-	device.SetPublicKey(pk)
+	device.SetPrivateKey(bsk)
+	device.SetPublicKey(bpk)
 	return device
 }
 

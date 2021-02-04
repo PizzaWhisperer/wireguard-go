@@ -18,7 +18,6 @@ import (
 	"golang.org/x/crypto/sha3"
 
 	"gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber"
-	"gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber/utils"
 	"golang.zx2c4.com/wireguard/tai64n"
 )
 
@@ -93,7 +92,7 @@ type MessageInitiation struct {
 	Ephemeral KyberPKEPK
 	Static    [blake2s.Size + poly1305.TagSize]byte
 	Timestamp [tai64n.TimestampSize + poly1305.TagSize]byte
-	Ct1       [utils.SIZEC]byte
+	Ct1       [kyber.Kyber768SizeC]byte
 	MAC1      [blake2s.Size128]byte
 	MAC2      [blake2s.Size128]byte
 }
@@ -103,8 +102,8 @@ type MessageResponse struct {
 	Sender    uint32
 	Receiver  uint32
 	Ephemeral KyberPKEPK
-	Ct2       [utils.SIZEC]byte
-	Ct3       [utils.SIZEC]byte
+	Ct2       [kyber.Kyber768SizeC]byte
+	Ct3       [kyber.Kyber768SizeC]byte
 	Empty     [poly1305.TagSize]byte
 	MAC1      [blake2s.Size128]byte
 	MAC2      [blake2s.Size128]byte
@@ -197,8 +196,13 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 	var err error
 	handshake.hash = InitialHash
 	handshake.chainKey = InitialChainKey
-	pk, sk := kyber.PKEKeyGen(nil)
-	handshake.localEphemeral = sk
+	pk, sk := k.PKEKeyGen(nil)
+	var bsk KyberPKESK
+	copy(bsk[:], sk)
+	var bpk KyberPKEPK
+	copy(bpk[:], pk)
+	
+	handshake.localEphemeral = bsk
 	if err != nil {
 		return nil, err
 	}
@@ -208,10 +212,10 @@ func (device *Device) CreateMessageInitiation(peer *Peer) (*MessageInitiation, e
 
 	encSeed := sha3.Sum512(append(device.staticIdentity.sigma, ri[:]...))
 	//KDF1(encSeed[:blake2s.Size], device.staticIdentity.sigma, ri[:])
-	ct1, shk1 := kyber.Encaps(encSeed[:], handshake.remoteStatic)
+	ct1, shk1 := k.Encaps(encSeed[:], handshake.remoteStatic[:])
 	msg := MessageInitiation{
 		Type:      MessageInitiationType,
-		Ephemeral: pk,
+		Ephemeral: bpk,
 	}
 	copy(msg.Ct1[:], ct1[:])
 
@@ -289,7 +293,7 @@ func (device *Device) ConsumeMessageInitiation(msg *MessageInitiation) *Peer {
 	var err error
 	var hpeerPK [blake2s.Size]byte
 	var key [chacha20poly1305.KeySize]byte
-	shk1 := kyber.Decaps(msg.Ct1[:], device.staticIdentity.privateKey)
+	shk1 := k.Decaps(msg.Ct1[:], device.staticIdentity.privateKey[:])
 	KDF2(&chainKey, &key, C2[:], shk1)
 	//C3
 	aead, _ := chacha20poly1305.New(key[:])
@@ -404,8 +408,8 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	var rr [4]byte
 	rand.Read(rr[:])
 	encSeed := sha3.Sum512(append(device.staticIdentity.sigma, rr[:]...))
-	ct2, shk2 := CPAEncaps(handshake.remoteEphemeral)
-	ct3, shk3 := kyber.Encaps(encSeed[:], handshake.remoteStatic)
+	ct2, shk2 := CPAEncaps(k,handshake.remoteEphemeral)
+	ct3, shk3 := k.Encaps(encSeed[:], handshake.remoteStatic[:])
 	copy(msg.Ct2[:], ct2[:])
 	copy(msg.Ct3[:], ct3[:])
 
@@ -480,11 +484,11 @@ func (device *Device) ConsumeMessageResponse(msg *MessageResponse) *Peer {
 		defer device.staticIdentity.RUnlock()
 
 		//C4 and H5 in handshake
-		shk2 := CPADecaps(msg.Ct2[:], handshake.localEphemeral)
+		shk2 := CPADecaps(k,msg.Ct2[:], handshake.localEphemeral)
 
 		mixKey(&chainKey, &chainKey, msg.Ct2[:]) //c6
 		mixKey(&chainKey, &chainKey, shk2)       //c7
-		shk3 := kyber.Decaps(msg.Ct3[:], device.staticIdentity.privateKey)
+		shk3 := k.Decaps(msg.Ct3[:], device.staticIdentity.privateKey[:])
 		mixKey(&chainKey, &chainKey, shk3) //c8
 
 		mixHash(&hash, &hash, msg.Ct2[:]) //H6

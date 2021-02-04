@@ -7,8 +7,6 @@ package device
 
 import (
 	"testing"
-
-	kyber "gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber"
 )
 
 func TestCookieMAC1(t *testing.T) {
@@ -20,10 +18,11 @@ func TestCookieMAC1(t *testing.T) {
 		checker   CookieChecker
 	)
 
-	pk, _ := kyber.KeyGen(nil)
-
-	generator.Init(pk)
-	checker.Init(pk)
+	pk, _ := k.KeyGen(nil)
+	var bpk KyberKEMPK
+	copy(bpk[:], pk)
+	generator.Init(bpk)
+	checker.Init(bpk)
 
 	// check mac1
 

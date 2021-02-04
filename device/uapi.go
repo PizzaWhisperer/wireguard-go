@@ -17,6 +17,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
 	"golang.org/x/crypto/blake2s"
 
 	"golang.zx2c4.com/wireguard/conn"
@@ -163,7 +164,7 @@ func (device *Device) IpcSetOperation(r io.Reader) (err error) {
 	return nil
 }
 
-func (device *Device) handleLine( peer *ipcSetPeer,key, value string) error{
+func (device *Device) handleLine(peer *ipcSetPeer, key, value string) error {
 	switch key {
 	case "private_key":
 		var sk KyberKEMSK
@@ -174,7 +175,6 @@ func (device *Device) handleLine( peer *ipcSetPeer,key, value string) error{
 		}
 		device.log.Verbosef("UAPI: Updating private key")
 		device.SetPrivateKey(sk)
-
 
 	case "public_key":
 		var pk KyberKEMPK
@@ -277,7 +277,7 @@ func (device *Device) handleLine( peer *ipcSetPeer,key, value string) error{
 		device.log.Verbosef("%v - UAPI: Updating preshared key", peer.Peer)
 
 		peer.handshake.mutex.Lock()
-		err := FromHex(peer.handshake.presharedKey,value)
+		err := FromHex(peer.handshake.presharedKey, value)
 		peer.handshake.mutex.Unlock()
 
 		if err != nil {
@@ -341,74 +341,6 @@ func (device *Device) handleLine( peer *ipcSetPeer,key, value string) error{
 		if value != "1" {
 			return ipcErrorf(ipc.IpcErrorInvalid, "invalid protocol version: %v", value)
 		}
-
-
-	default:
-		return ipcErrorf(ipc.IpcErrorInvalid, "invalid UAPI device key: %v", key)
-	}
-
-	return nil
-}
-
-func (device *Device) handleDeviceLine(key, value string) error {
-	switch key {
-	case "private_key":
-		var sk KyberKEMSK
-		err := FromHex(sk[:], value)
-
-		if err != nil {
-			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set private_key: %w", err)
-		}
-		device.log.Verbosef("UAPI: Updating private key")
-		device.SetPrivateKey(sk)
-
-
-	case "public_key":
-		var pk KyberKEMPK
-		err := FromHex(pk[:], value)
-		if err != nil {
-			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set public_key: %w", err)
-		}
-		device.log.Verbosef("UAPI: Updating public key")
-		device.SetPublicKey(pk)
-		device.log.Verbosef("UAPI: Transition to peer configuration")
-
-	case "listen_port":
-		port, err := strconv.ParseUint(value, 10, 16)
-		if err != nil {
-			return ipcErrorf(ipc.IpcErrorInvalid, "failed to parse listen_port: %w", err)
-		}
-
-		// update port and rebind
-		device.log.Verbosef("UAPI: Updating listen port")
-
-		device.net.Lock()
-		device.net.port = uint16(port)
-		device.net.Unlock()
-
-		if err := device.BindUpdate(); err != nil {
-			return ipcErrorf(ipc.IpcErrorPortInUse, "failed to set listen_port: %w", err)
-		}
-
-	case "fwmark":
-		mark, err := strconv.ParseUint(value, 10, 32)
-		if err != nil {
-			return ipcErrorf(ipc.IpcErrorInvalid, "invalid fwmark: %w", err)
-		}
-
-		device.log.Verbosef("UAPI: Updating fwmark")
-		if err := device.BindSetMark(uint32(mark)); err != nil {
-			return ipcErrorf(ipc.IpcErrorPortInUse, "failed to update fwmark: %w", err)
-		}
-
-	case "replace_peers":
-		if value != "true" {
-			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set replace_peers, invalid value: %v", value)
-		}
-		device.log.Verbosef("UAPI: Removing all peers")
-		device.RemoveAllPeers()
-
-
 
 	default:
 		return ipcErrorf(ipc.IpcErrorInvalid, "invalid UAPI device key: %v", key)
@@ -422,137 +354,6 @@ type ipcSetPeer struct {
 	*Peer        // Peer is the current peer being operated on
 	dummy   bool // dummy reports whether this peer is a temporary, placeholder peer
 	created bool // new reports whether this is a newly created peer
-}
-
-
-func (device *Device) handlePeerLine(peer *ipcSetPeer, key, value string) error {
-	switch key {
-	case "peer_key":
-		var publicKey KyberKEMPK
-		err := FromHex(publicKey[:], value)
-		if err != nil {
-			return ipcErrorf(ipc.IpcErrorInvalid, "failed to get peer by public key: %w", err)
-		}
-
-		// Ignore peer with the same public key as this device.
-		device.staticIdentity.RLock()
-		peer.dummy = device.staticIdentity.publicKey.Equals(publicKey)
-		device.staticIdentity.RUnlock()
-
-		if peer.dummy {
-			peer.Peer = &Peer{}
-		} else {
-			hpk := blake2s.Sum256(publicKey[:])
-			peer.Peer = device.LookupPeer(hpk)
-		}
-
-		peer.created = peer.Peer == nil
-		if peer.created {
-			peer.Peer, err = device.NewPeer(publicKey)
-			if err != nil {
-				return ipcErrorf(ipc.IpcErrorInvalid, "failed to create new peer: %w", err)
-			}
-			device.log.Verbosef("%v - UAPI: Created", peer.Peer)
-		}
-	case "update_only":
-		// allow disabling of creation
-		if value != "true" {
-			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set update only, invalid value: %v", value)
-		}
-		if peer.created && !peer.dummy {
-			hpk := blake2s.Sum256(peer.handshake.remoteStatic[:])
-			device.RemovePeer(hpk)
-			peer.Peer = &Peer{}
-			peer.dummy = true
-		}
-
-	case "remove":
-		// remove currently selected peer from device
-		if value != "true" {
-			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set remove, invalid value: %v", value)
-		}
-		if !peer.dummy {
-			device.log.Verbosef("%v - UAPI: Removing", peer.Peer)
-			hpk := blake2s.Sum256(peer.handshake.remoteStatic[:])
-			device.RemovePeer(hpk)
-		}
-		peer.Peer = &Peer{}
-		peer.dummy = true
-
-	case "preshared_key":
-		device.log.Verbosef("%v - UAPI: Updating preshared key", peer.Peer)
-
-		peer.handshake.mutex.Lock()
-		err := FromHex(peer.handshake.presharedKey,value)
-		peer.handshake.mutex.Unlock()
-
-		if err != nil {
-			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set preshared key: %w", err)
-		}
-
-	case "endpoint":
-		device.log.Verbosef("%v - UAPI: Updating endpoint", peer.Peer)
-		endpoint, err := conn.CreateEndpoint(value)
-		if err != nil {
-			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set endpoint %v: %w", value, err)
-		}
-		peer.Lock()
-		defer peer.Unlock()
-		peer.endpoint = endpoint
-
-	case "persistent_keepalive_interval":
-		device.log.Verbosef("%v - UAPI: Updating persistent keepalive interval", peer.Peer)
-
-		secs, err := strconv.ParseUint(value, 10, 16)
-		if err != nil {
-			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set persistent keepalive interval: %w", err)
-		}
-
-		old := atomic.SwapUint32(&peer.persistentKeepaliveInterval, uint32(secs))
-
-		// Send immediate keepalive if we're turning it on and before it wasn't on.
-		if old == 0 && secs != 0 {
-			if err != nil {
-				return ipcErrorf(ipc.IpcErrorIO, "failed to get tun device status: %w", err)
-			}
-			if device.isUp.Get() && !peer.dummy {
-				peer.SendKeepalive()
-			}
-		}
-
-	case "replace_allowed_ips":
-		device.log.Verbosef("%v - UAPI: Removing all allowedips", peer.Peer)
-		if value != "true" {
-			return ipcErrorf(ipc.IpcErrorInvalid, "failed to replace allowedips, invalid value: %v", value)
-		}
-		if peer.dummy {
-			return nil
-		}
-		device.allowedips.RemoveByPeer(peer.Peer)
-
-	case "allowed_ip":
-		device.log.Verbosef("%v - UAPI: Adding allowedip", peer.Peer)
-
-		_, network, err := net.ParseCIDR(value)
-		if err != nil {
-			return ipcErrorf(ipc.IpcErrorInvalid, "failed to set allowed ip: %w", err)
-		}
-		if peer.dummy {
-			return nil
-		}
-		ones, _ := network.Mask.Size()
-		device.allowedips.Insert(network.IP, uint(ones), peer.Peer)
-
-	case "protocol_version":
-		if value != "1" {
-			return ipcErrorf(ipc.IpcErrorInvalid, "invalid protocol version: %v", value)
-		}
-
-	default:
-		return ipcErrorf(ipc.IpcErrorInvalid, "invalid UAPI peer key: %v", key)
-	}
-
-	return nil
 }
 
 func (device *Device) IpcGet() (string, error) {

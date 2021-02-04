@@ -9,17 +9,17 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 
-	utils "gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber/utils"
+	kyber "gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber"
 )
 
 type (
 	NoiseNonce uint64 // padded to 12-bytes
 
-	KyberPKEPK [utils.SIZEPK]byte
-	KyberPKESK [utils.SIZEPKESK]byte
+	KyberPKEPK [kyber.Kyber768SizePK]byte
+	KyberPKESK [kyber.Kyber768SizePKESK]byte //kyber.Kyber768SizePKESK undefined ??
 
-	KyberKEMPK [utils.SIZEPK]byte
-	KyberKEMSK [utils.SIZESK]byte
+	KyberKEMPK [kyber.Kyber768SizePK]byte
+	KyberKEMSK [kyber.Kyber768SizeSK]byte
 )
 
 func loadExactHex(dst []byte, src string) error {

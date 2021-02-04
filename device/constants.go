@@ -7,6 +7,8 @@ package device
 
 import (
 	"time"
+
+	kyber "gitlab.kudelski.com/ks-fun/go-pqs/crystals-kyber"
 )
 
 /* Specification constants */
@@ -39,3 +41,5 @@ const (
 	UnderLoadAfterTime = time.Second // how long does the device remain under load after detected
 	MaxPeers           = 1 << 16     // maximum number of configured peers
 )
+
+var k = kyber.NewKyber768()

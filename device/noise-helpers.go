@@ -21,18 +21,18 @@ import (
  * https://tools.ietf.org/html/rfc5869
  */
 
-func CPAEncaps(pk KyberPKEPK) ([]byte, []byte) {
+func CPAEncaps(k *kyber.Kyber, pk KyberPKEPK) ([]byte, []byte) {
 	var msg []byte
 	rand.Read(msg[:])
 	kr := sha3.Sum512(msg[:])
-	c := kyber.Encrypt(kr[:32], kr[32:], pk)
+	c := k.Encrypt(kr[:32], kr[32:], pk[:])
 	ss := blake2s.Sum256(kr[:32])
 	return c, ss[:]
 }
 
-func CPADecaps(c []byte, sk KyberPKESK) []byte {
-	k := kyber.Decrypt(c, sk)
-	ss := blake2s.Sum256(k)
+func CPADecaps(k *kyber.Kyber, c []byte, sk KyberPKESK) []byte {
+	kr := k.Decrypt(c, sk[:])
+	ss := blake2s.Sum256(kr)
 	return ss[:]
 }
 
