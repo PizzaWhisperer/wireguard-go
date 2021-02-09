@@ -200,8 +200,8 @@ github.com/urfave/cli v1.22.2/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtX
 github.com/vishvananda/netlink v1.0.1-0.20190930145447-2ec5bdc52b86/go.mod h1:+SR5DhBJrl6ZM7CoCKvpw5BKroDKQ+PJqOg65H/2ktk=
 github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae/go.mod h1:DD4vA1DwXk04H54A1oHXtwZmA0grkVMdPxx/VGLCah0=
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
-gitlab.kudelski.com/ks-fun/go-pqs v0.0.0-20210204075740-ff9586d096ce h1:qi5j8rBK/9NpHX9nEeHaeJeQqOU3IrADMyK1OBhx5kE=
-gitlab.kudelski.com/ks-fun/go-pqs v0.0.0-20210204075740-ff9586d096ce/go.mod h1:F+Qu//bkL7PiXar1Z5dES8atK4aUR2/+TaWswYVU6xI=
+gitlab.kudelski.com/ks-fun/go-pqs v0.0.0-20210209140849-97f8f0285f57 h1:KXQR9ttQgr50cT0jpDLFt8kJzj1CLVmAVTEGQFvAIbc=
+gitlab.kudelski.com/ks-fun/go-pqs v0.0.0-20210209140849-97f8f0285f57/go.mod h1:F+Qu//bkL7PiXar1Z5dES8atK4aUR2/+TaWswYVU6xI=
 go.opencensus.io v0.21.0/go.mod h1:mSImk1erAIZhrmZN+AvHh14ztQfjbGwt4TtuofqLduU=
 go.opencensus.io v0.22.0/go.mod h1:+kGneAE2xo2IficOXnaByMWTGM9T73dGwxeWcUqIpI8=
 go.opencensus.io v0.22.2/go.mod h1:yxeiOL68Rb0Xd1ddK5vPZ/oVn4vY4Ynel7k9FzqtOIw=
