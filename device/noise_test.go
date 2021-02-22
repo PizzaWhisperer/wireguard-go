@@ -8,12 +8,85 @@ package device
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"testing"
+
+	"golang.org/x/crypto/blake2s"
+	"golang.org/x/crypto/poly1305"
+	"golang.zx2c4.com/wireguard/tai64n"
 )
 
+func TestNumber(t *testing.T) {
+	fmt.Println(2*4 + blake2s.Size + poly1305.TagSize + tai64n.TimestampSize + poly1305.TagSize + 2*blake2s.Size128)
+}
+
+func BenchmarkHandshake(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+
+		//ignore errors everywhere
+		dev1 := randDevice()
+		dev2 := randDevice()
+
+		peer1, _ := dev2.NewPeer(dev1.staticIdentity.publicKey)
+		peer2, _ := dev1.NewPeer(dev2.staticIdentity.publicKey)
+
+		/* simulate handshake */
+
+		// initiation message
+
+		msg1, _ := dev1.CreateMessageInitiation(peer2)
+
+		packet := make([]byte, 0, 256)
+		writer := bytes.NewBuffer(packet)
+		binary.Write(writer, binary.LittleEndian, msg1)
+		dev2.ConsumeMessageInitiation(msg1)
+
+		// response message
+
+		msg2, _ := dev2.CreateMessageResponse(peer1)
+
+		dev1.ConsumeMessageResponse(msg2)
+
+		// key pairs
+
+		peer1.BeginSymmetricSession()
+
+		peer2.BeginSymmetricSession()
+
+		/** can't code test but manualy tested and ok
+		assertEqual(
+			t,
+			peer1.keypairs.next.send,
+			peer2.keypairs.Current().receive)**/
+
+		key1 := peer1.keypairs.loadNext()
+		key2 := peer2.keypairs.current
+
+		// encrypting / decryption test
+
+		func() {
+			testMsg := []byte("wireguard test message 1")
+			var out []byte
+			var nonce [12]byte
+			out = key1.send.Seal(out, nonce[:], testMsg, nil)
+			out, _ = key2.receive.Open(out[:0], nonce[:], out, nil)
+		}()
+
+		func() {
+			testMsg := []byte("wireguard test message 2")
+			var out []byte
+			var nonce [12]byte
+			out = key2.send.Seal(out, nonce[:], testMsg, nil)
+			out, _ = key1.receive.Open(out[:0], nonce[:], out, nil)
+		}()
+		dev1.Close()
+		dev2.Close()
+	}
+}
+
 func TestNoiseHandshake(t *testing.T) {
-	dev1 := randDevice(t)
-	dev2 := randDevice(t)
+	dev1 := randDevice()
+	dev2 := randDevice()
 
 	defer dev1.Close()
 	defer dev2.Close()

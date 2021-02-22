@@ -277,7 +277,7 @@ func assertEqual(t *testing.T, a, b []byte) {
 	}
 }
 
-func randDevice(t *testing.T) *Device {
+func randDevice() *Device {
 	pk, sk := k.KeyGen(nil)
 	var bpk KyberKEMPK
 	var bsk KyberKEMSK

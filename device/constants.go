@@ -42,4 +42,4 @@ const (
 	MaxPeers           = 1 << 16     // maximum number of configured peers
 )
 
-var k = kyber.NewKyber768()
+var k = kyber.NewKyber512()
