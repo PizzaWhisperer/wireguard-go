@@ -15,11 +15,11 @@ import (
 type (
 	NoiseNonce uint64 // padded to 12-bytes
 
-	KyberPKEPK [kyber.Kyber512SizePK]byte
-	KyberPKESK [kyber.Kyber512SizePKESK]byte //kyber.Kyber768SizePKESK undefined ??
+	KyberPKEPK [kyber.Kyber768SizePK]byte
+	KyberPKESK [kyber.Kyber768SizePKESK]byte //kyber.Kyber768SizePKESK undefined ??
 
-	KyberKEMPK [kyber.Kyber512SizePK]byte
-	KyberKEMSK [kyber.Kyber512SizeSK]byte
+	KyberKEMPK [kyber.Kyber768SizePK]byte
+	KyberKEMSK [kyber.Kyber768SizeSK]byte
 )
 
 func loadExactHex(dst []byte, src string) error {

@@ -8,17 +8,8 @@ package device
 import (
 	"bytes"
 	"encoding/binary"
-	"fmt"
 	"testing"
-
-	"golang.org/x/crypto/blake2s"
-	"golang.org/x/crypto/poly1305"
-	"golang.zx2c4.com/wireguard/tai64n"
 )
-
-func TestNumber(t *testing.T) {
-	fmt.Println(2*4 + blake2s.Size + poly1305.TagSize + tai64n.TimestampSize + poly1305.TagSize + 2*blake2s.Size128)
-}
 
 func BenchmarkHandshake(b *testing.B) {
 	for i := 0; i < b.N; i++ {

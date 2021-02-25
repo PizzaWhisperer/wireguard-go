@@ -65,8 +65,8 @@ const (
 )
 
 const (
-	MessageInitiationSize      = 2*4 + kyber.Kyber512SizePK + blake2s.Size + poly1305.TagSize +tai64n.TimestampSize + poly1305.TagSize+ kyber.Kyber512SizeC + 2*blake2s.Size128 //2388                                          // size of handshake initiation message ere add SIZEC
-	MessageResponseSize        = 3*4+kyber.Kyber512SizePK+2*kyber.Kyber512SizeC+poly1305.TagSize+2*blake2s.Size128//3420                                                                                                     //92 + 2*utils.SIZEC                            // size of response message
+	MessageInitiationSize      = 2*4 + kyber.Kyber768SizePK + blake2s.Size + poly1305.TagSize +tai64n.TimestampSize + poly1305.TagSize+ kyber.Kyber768SizeC + 2*blake2s.Size128 //2388                                          // size of handshake initiation message ere add SIZEC
+	MessageResponseSize        = 3*4+2*kyber.Kyber768SizeC+poly1305.TagSize+2*blake2s.Size128//2260                                                                                                     //92 + 2*utils.SIZEC                            // size of response message
 	MessageCookieReplySize     = 64                                                                                                       // size of cookie reply message
 	MessageTransportHeaderSize = 16                                                                                                       // size of data preceding content in transport message
 	MessageTransportSize       = MessageTransportHeaderSize + poly1305.TagSize                                                            // size of empty transport
@@ -92,7 +92,7 @@ type MessageInitiation struct {
 	Ephemeral KyberPKEPK
 	Static    [blake2s.Size + poly1305.TagSize]byte
 	Timestamp [tai64n.TimestampSize + poly1305.TagSize]byte
-	Ct1       [kyber.Kyber512SizeC]byte
+	Ct1       [kyber.Kyber768SizeC]byte
 	MAC1      [blake2s.Size128]byte
 	MAC2      [blake2s.Size128]byte
 }
@@ -101,9 +101,8 @@ type MessageResponse struct {
 	Type      uint32
 	Sender    uint32
 	Receiver  uint32
-	Ephemeral KyberPKEPK
-	Ct2       [kyber.Kyber512SizeC]byte
-	Ct3       [kyber.Kyber512SizeC]byte
+	Ct2       [kyber.Kyber768SizeC]byte
+	Ct3       [kyber.Kyber768SizeC]byte
 	Empty     [poly1305.TagSize]byte
 	MAC1      [blake2s.Size128]byte
 	MAC2      [blake2s.Size128]byte
@@ -395,15 +394,6 @@ func (device *Device) CreateMessageResponse(peer *Peer) (*MessageResponse, error
 	msg.Type = MessageResponseType
 	msg.Sender = handshake.localIndex
 	msg.Receiver = handshake.remoteIndex
-	// create ephemeral key
-
-	//pk, sk := kyber.PKEKeyGen(nil)
-	//	handshake.remoteEphemeral, handshake.localEphemeral = pk, sk
-	//handshake.remoteEphemeral, handshake.localEphemeral = kyber.PKEKeyGen(nil)
-	if err != nil {
-		return nil, err
-	}
-	//msg.Ephemeral = pk
 
 	var rr [4]byte
 	rand.Read(rr[:])
