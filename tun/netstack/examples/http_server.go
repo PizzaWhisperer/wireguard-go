@@ -8,8 +8,8 @@
 package main
 
 import (
-	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/tun/netstack"
+	"github.com/PizzaWhisperer/wireguard/device"
+	"github.com/PizzaWhisperer/wireguard/tun/netstack"
 	"io"
 	"log"
 	"net"

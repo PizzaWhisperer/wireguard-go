@@ -20,8 +20,8 @@ import (
 
 	"golang.org/x/crypto/blake2s"
 
-	"golang.zx2c4.com/wireguard/conn"
-	"golang.zx2c4.com/wireguard/ipc"
+	"github.com/PizzaWhisperer/wireguard/conn"
+	"github.com/PizzaWhisperer/wireguard/ipc"
 )
 
 type IPCError struct {

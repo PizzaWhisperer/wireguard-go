@@ -16,10 +16,10 @@ import (
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
-	"golang.zx2c4.com/wireguard/conn"
-	"golang.zx2c4.com/wireguard/ratelimiter"
-	"golang.zx2c4.com/wireguard/rwcancel"
-	"golang.zx2c4.com/wireguard/tun"
+	"github.com/PizzaWhisperer/wireguard/conn"
+	"github.com/PizzaWhisperer/wireguard/ratelimiter"
+	"github.com/PizzaWhisperer/wireguard/rwcancel"
+	"github.com/PizzaWhisperer/wireguard/tun"
 )
 
 type Device struct {
@@ -619,4 +619,8 @@ func (device *Device) BindClose() error {
 	err := unsafeCloseBind(device)
 	device.net.Unlock()
 	return err
+}
+
+func (device *Device) PrintDevice() {
+device.log.Verbosef("Device\nSK: %s\nPK: %s\n", device.staticIdentity.privateKey, device.staticIdentity.publicKey)
 }

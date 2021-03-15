@@ -15,8 +15,8 @@ import (
 
 	"golang.org/x/sys/windows"
 
-	"golang.zx2c4.com/wireguard/tun/wintun/memmod"
-	"golang.zx2c4.com/wireguard/tun/wintun/resource"
+	"github.com/PizzaWhisperer/wireguard/tun/wintun/memmod"
+	"github.com/PizzaWhisperer/wireguard/tun/wintun/resource"
 )
 
 type lazyDLL struct {

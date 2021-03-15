@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/PizzaWhisperer/wireguard/conn"
 	"golang.org/x/crypto/blake2s"
-	"golang.zx2c4.com/wireguard/conn"
 )
 
 const (

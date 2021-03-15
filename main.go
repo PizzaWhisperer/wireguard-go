@@ -15,9 +15,9 @@ import (
 	"strconv"
 	"syscall"
 
-	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/ipc"
-	"golang.zx2c4.com/wireguard/tun"
+	"github.com/PizzaWhisperer/wireguard/device"
+	"github.com/PizzaWhisperer/wireguard/ipc"
+	"github.com/PizzaWhisperer/wireguard/tun"
 )
 
 const (
@@ -30,11 +30,6 @@ const (
 	ENV_WG_UAPI_FD            = "WG_UAPI_FD"
 	ENV_WG_PROCESS_FOREGROUND = "WG_PROCESS_FOREGROUND"
 )
-
-func printUsage() {
-	fmt.Printf("usage:\n")
-	fmt.Printf("%s [-f/--foreground] INTERFACE-NAME\n", os.Args[0])
-}
 
 func warning() {
 	if runtime.GOOS != "linux" || os.Getenv(ENV_WG_PROCESS_FOREGROUND) == "1" {
@@ -63,32 +58,38 @@ func main() {
 
 	var foreground bool
 	var interfaceName string
-	if len(os.Args) < 2 || len(os.Args) > 3 {
-		printUsage()
-		return
-	}
+	var config bool
+	var configFile string
 
-	switch os.Args[1] {
+	nextArg := 1
+
+	switch os.Args[nextArg] {
 
 	case "-f", "--foreground":
 		foreground = true
-		if len(os.Args) != 3 {
-			printUsage()
-			return
-		}
-		interfaceName = os.Args[2]
+		nextArg++
+		interfaceName = os.Args[nextArg]
+		nextArg++
 
 	default:
 		foreground = false
-		if len(os.Args) != 2 {
-			printUsage()
-			return
-		}
-		interfaceName = os.Args[1]
+		interfaceName = os.Args[nextArg]
+		nextArg++
 	}
 
 	if !foreground {
 		foreground = os.Getenv(ENV_WG_PROCESS_FOREGROUND) == "1"
+	}
+
+	switch os.Args[nextArg] {
+
+	case "-c", "--setconf":
+		config = true
+		nextArg++
+		configFile = os.Args[nextArg]
+
+	default:
+		config = false
 	}
 
 	// get log level (default: info)
@@ -220,7 +221,18 @@ func main() {
 	}
 
 	device := device.NewDevice(tun, logger)
-
+	if config {
+		f, err := os.Open(configFile)
+		if err != nil {
+			panic(err)
+		}
+		defer f.Close()
+		err = device.IpcSetOperation(f)
+		if err != nil {
+			panic(err)
+		}
+	}
+	device.PrintDevice()
 	logger.Verbosef("Device started")
 
 	errs := make(chan error)
