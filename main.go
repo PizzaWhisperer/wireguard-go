@@ -38,7 +38,7 @@ func warning() {
 
 	fmt.Fprintln(os.Stderr, "┌───────────────────────────────────────────────────┐")
 	fmt.Fprintln(os.Stderr, "│                                                   │")
-	fmt.Fprintln(os.Stderr, "│   Running this software on Linux is unnecessary,  │")
+	fmt.Fprintln(os.Stderr, "│   Running this software on Linux is unecessary,   │")
 	fmt.Fprintln(os.Stderr, "│   because the Linux kernel has built-in first     │")
 	fmt.Fprintln(os.Stderr, "│   class support for WireGuard, which will be      │")
 	fmt.Fprintln(os.Stderr, "│   faster, slicker, and better integrated. For     │")
@@ -103,7 +103,7 @@ func main() {
 		case "silent":
 			return device.LogLevelSilent
 		}
-		return device.LogLevelError
+		return device.LogLevelVerbose
 	}()
 
 	// open TUN device (or use supplied fd)
@@ -221,6 +221,8 @@ func main() {
 	}
 
 	device := device.NewDevice(tun, logger)
+	logger.Verbosef("Device started")
+
 	if config {
 		f, err := os.Open(configFile)
 		if err != nil {
@@ -233,7 +235,7 @@ func main() {
 		}
 	}
 	device.PrintDevice()
-	logger.Verbosef("Device started")
+	logger.Verbosef("Device configured")
 
 	errs := make(chan error)
 	term := make(chan os.Signal, 1)

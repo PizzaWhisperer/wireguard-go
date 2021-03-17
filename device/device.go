@@ -12,14 +12,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"golang.org/x/crypto/blake2s"
-	"golang.org/x/crypto/sha3"
-	"golang.org/x/net/ipv4"
-	"golang.org/x/net/ipv6"
 	"github.com/PizzaWhisperer/wireguard/conn"
 	"github.com/PizzaWhisperer/wireguard/ratelimiter"
 	"github.com/PizzaWhisperer/wireguard/rwcancel"
 	"github.com/PizzaWhisperer/wireguard/tun"
+	"golang.org/x/crypto/blake2s"
+	"golang.org/x/crypto/sha3"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 type Device struct {
@@ -622,5 +622,5 @@ func (device *Device) BindClose() error {
 }
 
 func (device *Device) PrintDevice() {
-device.log.Verbosef("Device\nSK: %s\nPK: %s\n", device.staticIdentity.privateKey, device.staticIdentity.publicKey)
+	device.log.Verbosef("Device\nSK: %x\nPK: %x\n", device.staticIdentity.privateKey, device.staticIdentity.publicKey)
 }

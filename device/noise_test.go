@@ -11,6 +11,54 @@ import (
 	"testing"
 )
 
+func BenchmarkHandshakeServer(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		dev1 := randDevice()
+		dev2 := randDevice()
+		peer1, _ := dev2.NewPeer(dev1.staticIdentity.publicKey)
+		peer2, _ := dev1.NewPeer(dev2.staticIdentity.publicKey)
+
+		msg1, _ := dev1.CreateMessageInitiation(peer2)
+		packet := make([]byte, 0, 256)
+		writer := bytes.NewBuffer(packet)
+		binary.Write(writer, binary.LittleEndian, msg1)
+
+		b.StartTimer()
+		dev2.ConsumeMessageInitiation(msg1)
+		dev2.CreateMessageResponse(peer1)
+		b.StopTimer()
+
+		dev1.Close()
+		dev2.Close()
+	}
+}
+
+func BenchmarkHandshakeClient(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		dev1 := randDevice()
+		dev2 := randDevice()
+		peer1, _ := dev2.NewPeer(dev1.staticIdentity.publicKey)
+		peer2, _ := dev1.NewPeer(dev2.staticIdentity.publicKey)
+
+		b.StartTimer()
+		msg1, _ := dev1.CreateMessageInitiation(peer2)
+		packet := make([]byte, 0, 256)
+		writer := bytes.NewBuffer(packet)
+		binary.Write(writer, binary.LittleEndian, msg1)
+		b.StopTimer()
+
+		dev2.ConsumeMessageInitiation(msg1)
+		msg2, _ := dev2.CreateMessageResponse(peer1)
+
+		b.StartTimer()
+		dev1.ConsumeMessageResponse(msg2)
+		b.StopTimer()
+
+		dev1.Close()
+		dev2.Close()
+	}
+}
+
 func BenchmarkHandshake(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 
